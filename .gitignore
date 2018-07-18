@@ -1,0 +1,22 @@
+# PyCharm
+venv/
+.idea/
+log/
+
+# Jupyter notebook
+.ipynb_checkpoints
+
+# Python
+__pycache__/
+
+# Binary
+*.png
+*.jpg
+*.bin
+*.dat
+
+# Human3.6M
+H36M.conf
+
+# Log
+*.log
