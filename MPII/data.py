@@ -118,7 +118,7 @@ class Dataset(torch_data.Dataset):
         position = np.zeros(shape=(16, 2))
         heatmap = -1
         if self.task == 'train':
-            heatmap = np.zeros(shape=(16, 64, 64))
+            heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
 
         keypoints = annorect.annopoints.point
         for keypoint in keypoints:

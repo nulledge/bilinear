@@ -1,9 +1,13 @@
-import MPII
 import numpy as np
-import imageio
+import os
+import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+import MPII
+import Model
+from MPII.util import draw_line, draw_merged_image
 
 data = DataLoader(
     MPII.Dataset(
@@ -16,21 +20,71 @@ data = DataLoader(
     num_workers=8
 )
 
-num = 0
-with tqdm(total=len(data)) as progress:
-    for images, heatmaps, keypoints in data:
+hourglass = Model.StackedHourglass(stacks=8, joints=16)
+step = np.zeros([1], dtype=np.uint32)
 
-        for image, heatmap, keypoint in zip(images, heatmaps, keypoints):
+pretrained_epoch = 0
+for _, _, files in os.walk('./pretrained'):
+    for file in files:
+        name, extension = file.split('.')
+        epoch = int(name)
+        if epoch > pretrained_epoch:
+            pretrained_epoch = epoch
 
-            for x in range(64):
-                for y in range(64):
-                    heatmap[0, y, x] = max(heatmap[:, y, x])
+if pretrained_epoch > 0:
+    pretrained_model = os.path.join('./pretrained/{epoch}.save'.format(epoch=pretrained_epoch))
+    pretrained_model = torch.load(pretrained_model)
 
-            imageio.imwrite('%d-rgb.jpg' % num, np.asarray(image.permute(1, 2, 0)))
-            imageio.imwrite('%d-heat.jpg' % num, np.asarray(heatmap[0, :, :]))
+    hourglass.load_state_dict(pretrained_model['state'])
+    step[0] = pretrained_model['step']
 
-            num = num + 1
+else:
+    pretrained_model = None
 
-        progress.update(1)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+hourglass = hourglass.to(device)
+optimizer = torch.optim.RMSprop(hourglass.parameters(), lr=2.5e-4)
+if pretrained_model is not None:
+    optimizer.load_state_dict(pretrained_model['optimizer'])
+criterion = nn.MSELoss()
 
-        break
+loss_window, gt_image_window, out_image_window = None, None, None
+
+for epoch in range(pretrained_epoch + 1, pretrained_epoch + 10 +1):
+    with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
+
+        with torch.set_grad_enabled(True):
+
+            for images, heatmaps, keypoints in data:
+                images_cpu = images
+                images = images.to(device)
+                heatmaps = heatmaps.to(device)
+
+                optimizer.zero_grad()
+                outputs = hourglass(images)
+
+                loss = sum([criterion(output, heatmaps) for output in outputs])
+                loss.backward()
+
+                progress.set_postfix(loss=loss.data[0])
+                progress.update(1)
+
+                loss_window = draw_line(x=step,
+                                        y=np.array([float(loss.data)]),
+                                        window=loss_window)
+                if step % 10 == 0:
+                    out = outputs[-1, :].squeeze().contiguous()
+                    gt_images = images_cpu.cpu().numpy()
+                    gt_image_window = draw_merged_image(out, gt_images.copy(), gt_image_window)
+                    out_image_window = draw_merged_image(heatmaps, gt_images.copy(), out_image_window)
+                step = step + 1
+
+    torch.save(
+        {
+            'epoch': epoch,
+            'step': step,
+            'state': hourglass.state_dict(),
+            'optimizer': optimizer.state_dict(),
+        },
+        './pretrained/{epoch}.save'.format(epoch=epoch)
+    )

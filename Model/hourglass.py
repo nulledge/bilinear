@@ -27,7 +27,15 @@ def heavy_conv(in_channels, out_channels):
     )
 
 
-identity = (lambda x: x)
+class IdentityUnit(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, in_tensor):
+        out_tensor = in_tensor
+
+        return out_tensor
 
 
 class ResUnit(nn.Module):
@@ -40,7 +48,7 @@ class ResUnit(nn.Module):
 
         self.conv = heavy_conv(in_channels, out_channels)
 
-        self.skip = identity
+        self.skip = IdentityUnit()
         if in_channels != out_channels:
             self.skip = nn.Conv2d(in_channels, out_channels, 1)
 
@@ -104,7 +112,7 @@ class StackedHourglass(nn.Module):
             ResUnit(in_channels=64, out_channels=128),
             nn.MaxPool2d(2),
             ResUnit(in_channels=128, out_channels=128),
-            ResUnit(in_channels=128, out_channels=self.out_features),
+            ResUnit(in_channels=128, out_channels=self.out_channels),
         )
         self.hourglass = nn.ModuleList([
             Hourglass(in_channels=self.out_channels, compression_time=self.compression_time) for _ in range(self.stacks)
@@ -119,11 +127,11 @@ class StackedHourglass(nn.Module):
             light_conv(self.out_channels, self.joints, kernel_size=1) for _ in range(self.stacks)
         ])
         self.after_heatmap = nn.ModuleList([
-            light_conv(self.joints, self.out_channels, kernel_size=1) for _ in range(self.stacks - 1)
-        ]).append(identity)
+            light_conv(self.joints, self.out_channels, kernel_size=1) for _ in range(self.stacks)
+        ])
         self.skip_intermediate = nn.ModuleList([
-            light_conv(self.out_channels, self.out_channels, kernel_size=1) for _ in range(self.stacks - 1)
-        ]).append(identity)
+            light_conv(self.out_channels, self.out_channels, kernel_size=1) for _ in range(self.stacks)
+        ])
 
     def forward(self, in_tensor):
         out_tensor = in_tensor
@@ -144,6 +152,6 @@ class StackedHourglass(nn.Module):
             prediction = heatmap(out_tensor)
             out_tensor = after(prediction) + skip_tensor
 
-            out_heatmap.append(prediction)
+            out_heatmap.append(prediction.unsqueeze(0))
 
-        return out_heatmap
+        return torch.cat(out_heatmap, 0)
