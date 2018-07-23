@@ -76,7 +76,7 @@ class Hourglass(nn.Module):
         self.upscale = nn.ModuleList([
             nn.Sequential(
                 ResUnit(in_channels),
-                nn.UpsamplingNearest2d(scale_factor=2),
+                nn.Upsample(scale_factor=2, mode='nearest'),
             ) for _ in range(compression_time)
         ])
 

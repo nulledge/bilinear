@@ -42,7 +42,7 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 +1):
 
                 optimizer.step()
 
-                progress.set_postfix(loss=float(loss.data[0]))
+                progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
 
                 loss_window = draw_line(x=step,
