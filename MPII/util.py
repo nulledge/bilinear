@@ -1,14 +1,9 @@
 import math
 import numpy as np
-import skimage.transform
-import torch
 from functools import lru_cache
 from PIL import Image
 from random import gauss
 from vectormath import Vector2
-from visdom import Visdom
-
-viz = Visdom()
 
 
 def rand(x):
@@ -101,64 +96,3 @@ def draw_heatmap(size, y0, x0, sigma=1):
     heatmap[dst[0]:dst[1], dst[2]:dst[3]] = g[src[0]:src[1], src[2]:src[3]]
 
     return heatmap
-
-
-def merge_to_color_heatmap(batch_heatmaps, h_format='NCHW'):
-    Color = torch.cuda.FloatTensor(
-        [[0, 0, 0.5],
-         [0, 0, 1],
-         [0, 1, 0],
-         [1, 1, 0],
-         [1, 0, 0]]
-    )
-
-    if h_format == 'NHWC':
-        batch_heatmaps = batch_heatmaps.permute(0, 3, 1, 2).contiguous()
-
-    batch, joints, height, width = batch_heatmaps.size()
-
-    heatmaps = batch_heatmaps.clamp(0, 1.).view(-1)
-
-    frac = torch.div(heatmaps, 0.25)
-    lower_indices, upper_indices = torch.floor(frac).long(), torch.ceil(frac).long()
-
-    t = frac - torch.floor(frac)
-    t = t.view(-1, 1)
-
-    k = Color.index_select(0, lower_indices)
-    k_1 = Color.index_select(0, upper_indices)
-
-    color_heatmap = (1.0 - t) * k + t * k_1
-    color_heatmap = color_heatmap.view(batch, joints, height, width, 3)
-    color_heatmap = color_heatmap.permute(0, 4, 2, 3, 1)
-    color_heatmap, _ = torch.max(color_heatmap, 4)
-
-    return color_heatmap
-
-
-def draw_line(x, y, window):
-    assert viz.check_connection()
-
-    return viz.line(X=x,
-                    Y=y,
-                    win=window,
-                    update='append' if window is not None else None)
-
-
-def draw_merged_image(heatmaps, images, window):
-    assert viz.check_connection()
-
-    heatmaps = merge_to_color_heatmap(heatmaps.data)
-    heatmaps = heatmaps.permute(0, 2, 3, 1).cpu()  # NHWC
-
-    resized_heatmaps = list()
-    for idx, ht in enumerate(heatmaps):
-        color_ht = skimage.transform.resize(ht.numpy(), (256, 256), mode='constant')
-        resized_heatmaps.append(color_ht.transpose(2, 0, 1))
-
-    resized_heatmaps = np.stack(resized_heatmaps, axis=0)
-
-    images = images * 0.6
-    overlayed_image = np.clip(images + resized_heatmaps * 0.4, 0, 1.)
-
-    return viz.images(tensor=overlayed_image, nrow=4, win=window)

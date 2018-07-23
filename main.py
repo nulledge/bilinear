@@ -5,26 +5,28 @@ from tqdm import tqdm
 
 import MPII
 from Model import load_model
-from MPII.util import draw_line, draw_merged_image
 from util.path import safe_path
+from util.visualize import draw
+from util import config
 
 data = DataLoader(
     MPII.Dataset(
-        root='/media/nulledge/2nd/data/MPII/',
-        task='train',
+        root=config.root,
+        task=config.task,
     ),
-    batch_size=8,
+    batch_size=config.batch_size,
     shuffle=True,
     pin_memory=True,
-    num_workers=8
+    num_workers=config.num_workers,
 )
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device(config.device)
 hourglass, optimizer, criterion, step, pretrained_epoch = load_model(device)
 
 loss_window, gt_image_window, out_image_window = None, None, None
+windows = [loss_window, gt_image_window, out_image_window]
 
-for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 +1):
+for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
 
         with torch.set_grad_enabled(True):
@@ -42,17 +44,11 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 +1):
 
                 optimizer.step()
 
+                if config.visualize:
+                    windows = draw(step, loss, images_cpu, heatmaps, outputs, windows)
+
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
-
-                loss_window = draw_line(x=step,
-                                        y=np.array([float(loss.data)]),
-                                        window=loss_window)
-                if step % 10 == 0:
-                    out = outputs[-1, :].squeeze().contiguous()
-                    gt_images = images_cpu.cpu().numpy()
-                    gt_image_window = draw_merged_image(out, gt_images.copy(), gt_image_window)
-                    out_image_window = draw_merged_image(heatmaps, gt_images.copy(), out_image_window)
                 step = step + 1
 
     torch.save(

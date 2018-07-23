@@ -2,13 +2,13 @@ import math
 import numpy as np
 import os
 import scipy, scipy.io
-import skimage, skimage.io
 import torch.utils.data as torch_data
-from random import random, shuffle, uniform
+from random import random, shuffle
 from torchvision import transforms
 from vectormath import Vector2
 
 from .util import rand, crop_image, draw_heatmap
+
 
 class Dataset(torch_data.Dataset):
 
