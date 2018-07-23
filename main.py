@@ -1,12 +1,10 @@
 import numpy as np
-import os
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import MPII
-import Model
+from Model import load_model
 from MPII.util import draw_line, draw_merged_image
 from util.path import safe_path
 
@@ -21,33 +19,8 @@ data = DataLoader(
     num_workers=8
 )
 
-hourglass = Model.StackedHourglass(stacks=8, joints=16)
-step = np.zeros([1], dtype=np.uint32)
-
-pretrained_epoch = 0
-for _, _, files in os.walk('./pretrained'):
-    for file in files:
-        name, extension = file.split('.')
-        epoch = int(name)
-        if epoch > pretrained_epoch:
-            pretrained_epoch = epoch
-
-if pretrained_epoch > 0:
-    pretrained_model = os.path.join('./pretrained/{epoch}.save'.format(epoch=pretrained_epoch))
-    pretrained_model = torch.load(pretrained_model)
-
-    hourglass.load_state_dict(pretrained_model['state'])
-    step[0] = pretrained_model['step']
-
-else:
-    pretrained_model = None
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-hourglass = hourglass.to(device)
-optimizer = torch.optim.RMSprop(hourglass.parameters(), lr=2.5e-4)
-if pretrained_model is not None:
-    optimizer.load_state_dict(pretrained_model['optimizer'])
-criterion = nn.MSELoss()
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+hourglass, optimizer, criterion, step, pretrained_epoch = load_model(device)
 
 loss_window, gt_image_window, out_image_window = None, None, None
 
