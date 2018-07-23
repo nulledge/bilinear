@@ -10,7 +10,6 @@ from vectormath import Vector2
 
 from .util import rand, crop_image, draw_heatmap
 
-
 class Dataset(torch_data.Dataset):
 
     # ID_TO_JOINT = {
@@ -46,6 +45,11 @@ class Dataset(torch_data.Dataset):
         if not os.path.exists(self.subset_path):
             self.refresh_subset()
         self.subset = np.loadtxt(self.subset_path, dtype=np.int32)
+
+        self.transform = transforms.Compose([
+            transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
+            transforms.ToTensor(),
+        ])
 
     def refresh_subset(self):
         correct = list()
@@ -121,6 +125,11 @@ class Dataset(torch_data.Dataset):
             heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
 
         keypoints = annorect.annopoints.point
+
+        # Unify the shape.
+        if type(keypoints) is not np.ndarray:
+            keypoints = [keypoints]
+
         for keypoint in keypoints:
             joint = keypoint.id
             in_image = Vector2(keypoint.x, keypoint.y)
@@ -132,14 +141,14 @@ class Dataset(torch_data.Dataset):
                 in_heatmap = Vector2(sin * in_heatmap.y + cos * in_heatmap.x, cos * in_heatmap.y - sin * in_heatmap.x)
 
             in_heatmap = in_heatmap + Vector2(64 // 2, 64 // 2)
-            position[joint] = in_heatmap
+            position[joint] = [in_heatmap.x, in_heatmap.y]
 
             if self.task == 'valid' or min(in_heatmap) < 0 or max(in_heatmap) >= 64:
                 continue
 
             heatmap[joint, :, :] = draw_heatmap(64, in_heatmap.y, in_heatmap.x)
 
-        return transforms.ToTensor()(image), heatmap, position
+        return self.transform(image), heatmap, position
 
     def __len__(self):
         return len(self.subset)
