@@ -8,6 +8,7 @@ from tqdm import tqdm
 import MPII
 import Model
 from MPII.util import draw_line, draw_merged_image
+from util.path import safe_path
 
 data = DataLoader(
     MPII.Dataset(
@@ -50,7 +51,7 @@ criterion = nn.MSELoss()
 
 loss_window, gt_image_window, out_image_window = None, None, None
 
-for epoch in range(pretrained_epoch + 1, pretrained_epoch + 10 +1):
+for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 +1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
 
         with torch.set_grad_enabled(True):
@@ -66,7 +67,9 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 10 +1):
                 loss = sum([criterion(output, heatmaps) for output in outputs])
                 loss.backward()
 
-                progress.set_postfix(loss=loss.data[0])
+                optimizer.step()
+
+                progress.set_postfix(loss=float(loss.data[0]))
                 progress.update(1)
 
                 loss_window = draw_line(x=step,
@@ -86,5 +89,5 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 10 +1):
             'state': hourglass.state_dict(),
             'optimizer': optimizer.state_dict(),
         },
-        './pretrained/{epoch}.save'.format(epoch=epoch)
+        safe_path('./pretrained/{epoch}.save'.format(epoch=epoch))
     )
