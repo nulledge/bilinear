@@ -1,5 +1,6 @@
 import torch
 
+pretrained = '/media/nulledge/2nd/ubuntu/bilinear/pretrained'
 root = '/media/nulledge/2nd/data/MPII/'
 task = 'train'
 batch_size = 8

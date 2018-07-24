@@ -58,5 +58,5 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
             'state': hourglass.state_dict(),
             'optimizer': optimizer.state_dict(),
         },
-        safe_path('./pretrained/{epoch}.save'.format(epoch=epoch))
+        '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained, epoch=epoch)
     )
