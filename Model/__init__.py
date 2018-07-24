@@ -4,12 +4,12 @@ import numpy as np
 import os
 
 
-def load_model(device):
+def load_model(device, pretrained):
     hourglass = StackedHourglass(stacks=8, joints=16)
     step = np.zeros([1], dtype=np.uint32)
 
     pretrained_epoch = 0
-    for _, _, files in os.walk('./pretrained'):
+    for _, _, files in os.walk(pretrained):
         for file in files:
             name, extension = file.split('.')
             epoch = int(name)
@@ -17,7 +17,7 @@ def load_model(device):
                 pretrained_epoch = epoch
 
     if pretrained_epoch > 0:
-        pretrained_model = os.path.join('./pretrained/{epoch}.save'.format(epoch=pretrained_epoch))
+        pretrained_model = os.path.join('{pretrained}/{epoch}.save'.format(pretrained=pretrained, epoch=pretrained_epoch))
         pretrained_model = torch.load(pretrained_model)
 
         hourglass.load_state_dict(pretrained_model['state'])

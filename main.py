@@ -21,7 +21,7 @@ data = DataLoader(
 )
 
 device = torch.device(config.device)
-hourglass, optimizer, criterion, step, pretrained_epoch = load_model(device)
+hourglass, optimizer, criterion, step, pretrained_epoch = load_model(device, config.pretrained)
 
 loss_window, gt_image_window, out_image_window = None, None, None
 windows = [loss_window, gt_image_window, out_image_window]
