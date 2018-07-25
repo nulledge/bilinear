@@ -1,7 +1,10 @@
 import torch
 
 pretrained = '/media/nulledge/2nd/ubuntu/bilinear/pretrained'
-root = '/media/nulledge/2nd/data/MPII/'
+root = {
+    'MPII': '/media/nulledge/2nd/data/MPII/',
+    'Human3.6M': '/media/nulledge/2nd/data/Human3.6M/converted',
+}
 task = 'train'
 batch_size = 8
 num_workers = 8

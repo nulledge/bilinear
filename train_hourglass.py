@@ -11,7 +11,7 @@ from util import config
 
 data = DataLoader(
     MPII.Dataset(
-        root=config.root,
+        root=config.root['MPII'],
         task=config.task,
     ),
     batch_size=config.batch_size,
