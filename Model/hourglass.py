@@ -1,14 +1,7 @@
 import torch
 import torch.nn as nn
-
-
-def linear(in_features, out_features):
-    return nn.Sequential(
-        nn.Linear(in_features, out_features, bias=False),
-        nn.BatchNorm1d(out_features),
-        nn.ReLU(),
-        nn.Dropout(p=0.5),
-    )
+import numpy as np
+import os
 
 
 def light_conv(in_channels, out_channels, kernel_size, stride=1, padding=0, bias=False):
@@ -156,3 +149,35 @@ class StackedHourglass(nn.Module):
             out_heatmap.append(prediction.unsqueeze(0))
 
         return torch.cat(out_heatmap, 0)
+
+
+def load_model(device, pretrained):
+    hourglass = StackedHourglass(stacks=8, joints=16)
+    step = np.zeros([1], dtype=np.uint32)
+
+    pretrained_epoch = 0
+    for _, _, files in os.walk(pretrained):
+        for file in files:
+            name, extension = file.split('.')
+            epoch = int(name)
+            if epoch > pretrained_epoch:
+                pretrained_epoch = epoch
+
+    if pretrained_epoch > 0:
+        pretrained_model = os.path.join(
+            '{pretrained}/{epoch}.save'.format(pretrained=pretrained, epoch=pretrained_epoch))
+        pretrained_model = torch.load(pretrained_model)
+
+        hourglass.load_state_dict(pretrained_model['state'])
+        step[0] = pretrained_model['step']
+
+    else:
+        pretrained_model = None
+
+    hourglass = hourglass.to(device)
+    optimizer = torch.optim.RMSprop(hourglass.parameters(), lr=2.5e-4)
+    if pretrained_model is not None:
+        optimizer.load_state_dict(pretrained_model['optimizer'])
+    criterion = nn.MSELoss()
+
+    return hourglass, optimizer, criterion, step, pretrained_epoch

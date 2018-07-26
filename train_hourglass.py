@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import MPII
-from Model import load_model
+import Model.hourglass
 from util.path import safe_path
 from util.visualize import draw
 from util import config
@@ -21,7 +21,8 @@ data = DataLoader(
 )
 
 device = torch.device(config.device)
-hourglass, optimizer, criterion, step, pretrained_epoch = load_model(device, config.pretrained)
+hourglass, optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_model(device,
+                                                                                     config.pretrained['hourglass'])
 
 loss_window, gt_image_window, out_image_window = None, None, None
 windows = [loss_window, gt_image_window, out_image_window]
@@ -58,5 +59,5 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
             'state': hourglass.state_dict(),
             'optimizer': optimizer.state_dict(),
         },
-        '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained, epoch=epoch)
+        '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['hourglass'], epoch=epoch)
     )

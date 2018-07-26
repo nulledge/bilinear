@@ -43,7 +43,7 @@ class Dataset(torch_data.Dataset):
             data[anno] = data[anno] - data[anno][0]  # root-centered
             data[anno] = (data[anno] - self.mean[dim]) / self.stddev[dim]  # normalize for each joint and coord.
 
-        return data[Annotation.Part], data[Annotation.S]
+        return np.asarray(data[Annotation.Part], dtype=np.float32), np.asarray(data[Annotation.S], dtype=np.float32)
 
     def __add__(self, item):
         pass
