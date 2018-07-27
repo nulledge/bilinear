@@ -46,10 +46,15 @@ class Dataset(torch_data.Dataset):
             self.refresh_subset()
         self.subset = np.loadtxt(self.subset_path, dtype=np.int32)
 
-        self.transform = transforms.Compose([
-            transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
-            transforms.ToTensor(),
-        ])
+        if self.task == 'train':
+            self.transform = transforms.Compose([
+                transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
+                transforms.ToTensor(),
+            ])
+        else:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
 
     def refresh_subset(self):
         correct = list()
@@ -119,7 +124,7 @@ class Dataset(torch_data.Dataset):
         #         image[:, :, channel] *= uniform(0.6, 1.4)
         #     image = np.clip(image, 0.0, 1.0)
 
-        position = np.zeros(shape=(16, 2))
+        position = np.zeros(shape=(16, 2), dtype=np.float32)
         heatmap = -1
         if self.task == 'train':
             heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)

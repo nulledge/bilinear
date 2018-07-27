@@ -9,11 +9,12 @@ import Model.bilinear
 from util.visualize import draw_line
 from util import config
 
+dataset = H36M.Dataset(
+    root=config.root['Human3.6M'],
+    task=config.task,
+)
 data = DataLoader(
-    H36M.Dataset(
-        root=config.root['Human3.6M'],
-        task=config.task,
-    ),
+    dataset,
     batch_size=config.batch_size,
     shuffle=True,
     pin_memory=True,
@@ -22,7 +23,7 @@ data = DataLoader(
 
 device = torch.device(config.device)
 bilinear, optimizer, criterion, step, pretrained_epoch, lr = Model.bilinear.load_model(device,
-                                                                                   config.pretrained['bilinear'])
+                                                                                       config.pretrained['bilinear'])
 
 loss_window = None
 windows = [loss_window]
@@ -31,7 +32,7 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
 
         with torch.set_grad_enabled(True):
-            for in_image_space, in_camera_space in data:
+            for in_image_space, in_camera_space, center, scale, _, _ in data:
 
                 if step % 100000 == 0 or step == 1:
                     lr = 1.0e-3 * 0.96 ** (step / 100000)
@@ -51,6 +52,7 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
 
                 optimizer.step()
 
+                # Too frequent update reduces the performance.
                 if step % 50 == 0:
                     loss_window = draw_line(x=np.asarray([step]),
                                             y=np.array([float(loss.data)]),
@@ -60,13 +62,13 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
                 progress.update(1)
                 step = step + 1
 
-    torch.save(
-        {
-            'epoch': epoch,
-            'step': step,
-            'state': bilinear.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'lr': lr,
-        },
-        '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['bilinear'], epoch=epoch)
-    )
+        torch.save(
+            {
+                'epoch': epoch,
+                'step': step,
+                'state': bilinear.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'lr': lr,
+            },
+            '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['bilinear'], epoch=epoch)
+        )
