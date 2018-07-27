@@ -9,7 +9,7 @@ root = {
     'Human3.6M': '/media/nulledge/2nd/data/Human3.6M/converted',
 }
 task = 'train'
-batch_size = 64
+batch_size = 8
 num_workers = 8
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 visualize = True

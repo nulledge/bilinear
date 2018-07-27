@@ -4,155 +4,147 @@ import numpy as np
 import os
 
 
-def light_conv(in_channels, out_channels, kernel_size, stride=1, padding=0, bias=False):
+# convolutional block: full pre-activation
+def conv_block(in_channel, out_channel, last_bias=False):
     return nn.Sequential(
-        nn.BatchNorm2d(in_channels),
+        nn.BatchNorm2d(in_channel),
         nn.ReLU(),
-        nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias),
-    )
+        nn.Conv2d(in_channel, out_channel // 2, 1, bias=False),
+        nn.BatchNorm2d(out_channel // 2),
+        nn.ReLU(),
+        nn.Conv2d(out_channel // 2, out_channel // 2, 3, padding=1, bias=False),
+        nn.BatchNorm2d(out_channel // 2),
+        nn.ReLU(),
+        nn.Conv2d(out_channel // 2, out_channel, 1, bias=last_bias))
 
 
-def heavy_conv(in_channels, out_channels):
+# covlutional 1x1 block
+def conv1_block(in_channel, out_channel, is_bias=False):
     return nn.Sequential(
-        light_conv(in_channels, out_channels // 2, kernel_size=1),
-        light_conv(out_channels // 2, out_channels // 2, kernel_size=3, padding=1),
-        light_conv(out_channels // 2, out_channels, kernel_size=1),
-    )
+        nn.BatchNorm2d(in_channel),
+        nn.ReLU(),
+        nn.Conv2d(in_channel, out_channel, 1, bias=is_bias))
 
 
-class IdentityUnit(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, in_tensor):
-        out_tensor = in_tensor
-
-        return out_tensor
-
-
-class ResUnit(nn.Module):
-
+# residual block
+class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels=None):
-        super(ResUnit, self).__init__()
-
+        super(ResBlock, self).__init__()
         if out_channels is None:
             out_channels = in_channels
 
-        self.conv = heavy_conv(in_channels, out_channels)
+        self.conv_block = conv_block(in_channels, out_channels)
 
-        self.skip = IdentityUnit()
+        self.skip_layer = None
         if in_channels != out_channels:
-            self.skip = nn.Conv2d(in_channels, out_channels, 1)
+            self.skip_layer = nn.Conv2d(in_channels, out_channels, 1)
 
-    def forward(self, in_tensor):
-        out_tensor = self.conv(in_tensor)
-        out_tensor = out_tensor + self.skip(in_tensor)
+    def forward(self, x):
+        out = self.conv_block(x)
+        out = torch.add(out, self.skip_layer(x) if self.skip_layer is not None else x)
+        return out
 
-        return out_tensor
 
-
+# hourglass
 class Hourglass(nn.Module):
-    def __init__(self, in_channels, compression_time):
+    def __init__(self, size, channels):
         super(Hourglass, self).__init__()
+        self.size = size
+        self.up_layers = nn.ModuleList([ResBlock(channels) for _ in range(self.size)])
+        self.low1_layers = nn.ModuleList([ResBlock(channels) for _ in range(self.size)])
+        self.low2 = ResBlock(channels)
+        self.low3_layers = nn.ModuleList([ResBlock(channels) for _ in range(self.size)])
+        self.max_pool = nn.MaxPool2d(2, 2)
+        self.up_sample = nn.Upsample(scale_factor=2, mode='nearest')
 
-        self.skip_connection = nn.ModuleList([
-            ResUnit(in_channels) for _ in range(compression_time)
-        ])
-        self.downscale = nn.ModuleList([
-            nn.Sequential(
-                nn.MaxPool2d(2, 2),
-                ResUnit(in_channels),
-            ) for _ in range(compression_time)
-        ])
-        self.res = ResUnit(in_channels)
-        self.upscale = nn.ModuleList([
-            nn.Sequential(
-                ResUnit(in_channels),
-                nn.Upsample(scale_factor=2, mode='nearest'),
-            ) for _ in range(compression_time)
-        ])
+    def forward(self, x):
+        l1 = x
 
-    def forward(self, in_tensor):
-        out_tensor = in_tensor
-        skip_tensor = list()
+        up1_outputs = list()
+        for up, low1 in zip(self.up_layers, self.low1_layers):
+            u = up(l1)
+            up1_outputs.append(u)
+            l1 = self.max_pool(l1)
+            l1 = low1(l1)
 
-        for skip_connection, downscale in zip(self.skip_connection, self.downscale):
-            skip_tensor.append(skip_connection(out_tensor))
-            out_tensor = downscale(out_tensor)
+        out = self.low2(l1)
 
-        out_tensor = self.res(out_tensor)
+        for up1_out, low3 in zip(reversed(up1_outputs), reversed(self.low3_layers)):
+            out = up1_out + self.up_sample(low3(out))
 
-        for skip_tensor, upscale in zip(reversed(skip_tensor), self.upscale):
-            out_tensor = upscale(out_tensor) + skip_tensor
-
-        return out_tensor
+        return out
 
 
 class StackedHourglass(nn.Module):
-    def __init__(self, stacks, joints, out_channels=256, compression_time=4):
+    def __init__(self, num_stacks, features, joints, internal_size=4):
         super(StackedHourglass, self).__init__()
-
-        self.stacks = stacks
+        self.num_stacks = num_stacks
+        self.features = features
         self.joints = joints
-        self.out_channels = out_channels
-        self.compression_time = compression_time
+        self.internale_size = internal_size
 
-        self.feature_extraction = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False),
-            # nn.BatchNorm2d(num_features=64),
+        # initial processing
+        self.init_conv = nn.Sequential(
+            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),  # 128
+            # nn.BatchNorm2d(64),
             # nn.ReLU(),
-            ResUnit(in_channels=64, out_channels=128),
-            nn.MaxPool2d(2),
-            ResUnit(in_channels=128, out_channels=128),
-            ResUnit(in_channels=128, out_channels=self.out_channels),
-        )
-        self.hourglass = nn.ModuleList([
-            Hourglass(in_channels=self.out_channels, compression_time=self.compression_time) for _ in range(self.stacks)
-        ])
-        self.prev_heatmap = nn.ModuleList([
-            nn.Sequential(
-                ResUnit(self.out_channels, self.out_channels),
-                light_conv(self.out_channels, self.out_channels, kernel_size=1),
-            ) for _ in range(self.stacks)
-        ])
-        self.heatmap_intermediate = nn.ModuleList([
-            light_conv(self.out_channels, self.joints, kernel_size=1, bias=True) for _ in range(self.stacks)
-        ])
-        self.after_heatmap = nn.ModuleList([
-            light_conv(self.joints, self.out_channels, kernel_size=1) for _ in range(self.stacks)
-        ])
-        self.skip_intermediate = nn.ModuleList([
-            light_conv(self.out_channels, self.out_channels, kernel_size=1) for _ in range(self.stacks)
-        ])
+            ResBlock(64, 128),
+            nn.MaxPool2d(2),  # 64
+            ResBlock(128, 128),
+            ResBlock(128, self.features))
 
-    def forward(self, in_tensor):
-        out_tensor = in_tensor
-        out_heatmap = list()
-        stack = zip(
-            self.hourglass,
-            self.prev_heatmap,
-            self.heatmap_intermediate,
-            self.after_heatmap,
-            self.skip_intermediate,
-        )
+        # residual layer
+        self.hourglasses = nn.ModuleList([Hourglass(self.internale_size, self.features) for _ in range(num_stacks)])
+        self.prev_intermediate_layers = nn.ModuleList([
+            nn.Sequential(ResBlock(self.features, self.features),
+                          conv1_block(self.features, self.features)) for _ in range(num_stacks)])
+        self.heat_intermediate_layers = nn.ModuleList(
+            [conv1_block(self.features, self.joints, is_bias=True) for _ in range(num_stacks)])
+        self.after_intermediate_layers = nn.ModuleList(
+            [conv1_block(self.joints, self.features) for _ in range(num_stacks - 1)])
+        self.skip_intermediate_layers = nn.ModuleList(
+            [conv1_block(self.features, self.features) for _ in range(num_stacks - 1)])
 
-        out_tensor = self.feature_extraction(out_tensor)
-        for hourglass, prev, heatmap, after, skip in stack:
-            prev_tensor = out_tensor
-            out_tensor = hourglass(out_tensor)
-            out_tensor = prev(out_tensor)
-            skip_tensor = skip(out_tensor)
-            prediction = heatmap(out_tensor)
-            out_tensor = after(prediction) + skip_tensor + prev_tensor
+    def forward(self, x):  # x dim: [BCHW]
+        init_conv = self.init_conv(x)
 
-            out_heatmap.append(prediction.unsqueeze(0))
+        inter = init_conv
+        out_heatmaps = None
+        layers = zip(self.hourglasses,
+                     self.prev_intermediate_layers,
+                     self.heat_intermediate_layers,
+                     self.after_intermediate_layers,
+                     self.skip_intermediate_layers)
+        for hg, prev, heat, after, skip in layers:  # loop over (num_stack - 1)
+            prev_inter = inter
 
-        return torch.cat(out_heatmap, 0)
+            hg = hg(inter)
+            prev = prev(hg)
+            heat = heat(prev)  # [BJHW], J: #joints
+            after = after(heat)
+            skip = skip(prev)
+
+            inter = prev_inter + after + skip
+
+            heatmap = heat.unsqueeze(0)  # ['1'BJWH]
+
+            # stacking intermediate heatmaps for intermediate supervision
+            if out_heatmaps is not None:
+                out_heatmaps = torch.cat([out_heatmaps, heatmap], 0)  # [SBJHW], S: #stacks
+            else:
+                out_heatmaps = heatmap
+
+        hg = self.hourglasses[-1](inter)
+        prev = self.prev_intermediate_layers[-1](hg)
+        heat = self.heat_intermediate_layers[-1](prev)
+        heatmap = heat.unsqueeze(0)  # ['1'BJHW]
+        out_heatmaps = torch.cat([out_heatmaps, heatmap], 0)  # [SBJHW]
+
+        return out_heatmaps
 
 
 def load_model(device, pretrained):
-    hourglass = StackedHourglass(stacks=8, joints=16)
+    hourglass = StackedHourglass(num_stacks=8, features=256, joints=16)
     step = np.zeros([1], dtype=np.uint32)
 
     pretrained_epoch = 0
