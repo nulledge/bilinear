@@ -61,4 +61,12 @@ def load_model(device, pretrained):
         lr = pretrained_model['lr']
         optimizer.load_state_dict(pretrained_model['optimizer'])
 
+    else:
+
+        def weight_init(m):
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal(m.weight)
+
+        bilinear.apply(weight_init)  # (lambda x: nn.init.kaiming_normal(x.weight)))
+
     return bilinear, optimizer, criterion, step, pretrained_epoch, lr
