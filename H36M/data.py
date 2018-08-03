@@ -45,7 +45,6 @@ class Dataset(torch_data.Dataset):
             image, heatmap = [-1, -1]
 
         for dim, anno in zip([2, 3], [Annotation.Part, Annotation.S]):
-            data[anno] = data[anno] - data[anno][0]  # root-centered
             data[anno] = (data[anno] - self.mean[dim]) / self.stddev[dim]  # normalize for each joint and coord.
             data[anno] = np.asarray(data[anno], dtype=np.float32)
 
@@ -100,8 +99,13 @@ class Dataset(torch_data.Dataset):
             anno = Annotation.S
         else:
             anno = Annotation.Part
-        data = np.reshape(np.asarray(self.data[self.task][anno]), newshape=(-1, dim * 17))
-        mean = np.reshape(np.mean(data, axis=0), newshape=(-1, dim))
-        stddev = np.reshape(np.std(data, axis=0), newshape=(-1, dim))
+
+        root = self.data[self.task][anno][:][0]  # Frame-Dim
+        root_centered = self.data[self.task][anno] - root  # Frame-Joint-Dim
+        self.data[self.task][anno] = root_centered
+
+        data = np.reshape(np.asarray(self.data[self.task][anno]), newshape=(-1, dim * 17))  # Frame-Dim*Joint
+        mean = np.reshape(np.mean(data, axis=0), newshape=(17, dim))  # Joint-Dim
+        stddev = np.reshape(np.std(data, axis=0), newshape=(17, dim))  # Joint-Dim
 
         return mean, stddev

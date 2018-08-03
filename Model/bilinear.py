@@ -18,8 +18,11 @@ class BilinearUnit(nn.Module):
         super().__init__()
 
         self.encode = heavy_linear(in_features=2 * 17, out_features=1024)
-        self.linear = nn.ModuleList([
-            heavy_linear(in_features=1024, out_features=1024) for _ in range(2)
+        self.bilinear = nn.ModuleList([
+            nn.Sequential(
+                heavy_linear(in_features=1024, out_features=1024),
+                heavy_linear(in_features=1024, out_features=1024),
+            ) for _ in range(2)
         ])
         self.decode = nn.Linear(in_features=1024, out_features=3 * 17, bias=True)
 
@@ -27,9 +30,9 @@ class BilinearUnit(nn.Module):
         out_tensor = in_tensor
 
         out_tensor = self.encode(out_tensor)
-        for linear in self.linear:
+        for bilinear in self.bilinear:
             skip_tensor = out_tensor
-            out_tensor = linear(out_tensor)
+            out_tensor = bilinear(out_tensor)
             out_tensor = out_tensor + skip_tensor
         out_tensor = self.decode(out_tensor)
 

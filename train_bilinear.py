@@ -28,7 +28,7 @@ bilinear, optimizer, criterion, step, pretrained_epoch, lr = Model.bilinear.load
 loss_window = None
 windows = [loss_window]
 
-for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
+for epoch in range(pretrained_epoch + 1, pretrained_epoch + 200 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
 
         with torch.set_grad_enabled(True):
