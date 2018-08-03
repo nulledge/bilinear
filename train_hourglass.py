@@ -57,8 +57,8 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
     torch.save(
         {
             'epoch': epoch,
-            'step': step,
-            'state': hourglass.state_dict(),
+            'global_step': step,
+            'state_dict': hourglass.state_dict(),
             'optimizer': optimizer.state_dict(),
         },
         '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['hourglass'], epoch=epoch)

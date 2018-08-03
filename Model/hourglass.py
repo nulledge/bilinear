@@ -160,8 +160,8 @@ def load_model(device, pretrained):
             '{pretrained}/{epoch}.save'.format(pretrained=pretrained, epoch=pretrained_epoch))
         pretrained_model = torch.load(pretrained_model)
 
-        hourglass.load_state_dict(pretrained_model['state'])
-        step[0] = pretrained_model['step']
+        hourglass.load_state_dict(pretrained_model['state_dict'])
+        step[0] = pretrained_model['global_step']
 
     else:
         pretrained_model = None

@@ -53,11 +53,12 @@ device = torch.device(config.device)
 hourglass, _, _, _, pretrained_epoch = Model.hourglass.load_model(device, config.pretrained['hourglass'])
 
 hit = np.zeros(shape=(16,), dtype=np.uint32)
-total = 0
+total = np.zeros(shape=(16,), dtype=np.uint32)
 
 with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
     with torch.set_grad_enabled(False):
-        for images, _, keypoints in data:
+        for images, heatmaps, keypoints in data:
+
             images_cpu = images
             images_device = images.to(device)
 
@@ -65,20 +66,55 @@ with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
             outputs = outputs[-1]  # Heatmaps from the last stack in batch-channel-height-width shape.
 
             n_batch = outputs.shape[0]
-            total = total + n_batch
 
+            joint_map = [13, 12, 14, 11, 15, 10, 3, 2, 4, 1, 5, 0, 6, 7, 8, 9]
             poses_2D = torch.zeros(n_batch, 16, 2)  # MPII has 16 joints.
+
             for batch in range(n_batch):
                 image_soft = np.asarray(images[batch].data)
+
+                diff = torch.zeros(16, 2)
+
                 for joint, heatmap in enumerate(outputs[batch]):
                     poses_2D[batch, joint, :] = softargmax(heatmap)
+                    diff[joint] = poses_2D.data[batch][joint] - keypoints[batch][joint_map[joint]]
 
-                diff = poses_2D.data[batch] - keypoints[batch]  # shape=(16, 2)
+                    if np.nonzero(heatmaps[batch][joint]).size != 0:
+                        total[joint] = total[joint] + 1
+
                 dist = torch.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)  # shape=(16)
 
                 for joint in torch.nonzero(torch.le(dist, 64 * 0.1)):
                     hit[joint] = hit[joint] + 1
 
             progress.update(1)
+
+            if False:
+                heatmaps = merge_to_color_heatmap(outputs)
+                heatmaps = heatmaps.permute(0, 2, 3, 1).cpu()  # NHWC
+
+                resized_heatmaps = list()
+                for idx, ht in enumerate(heatmaps):
+                    color_ht = skimage.transform.resize(ht.numpy(), (256, 256), mode='constant')
+                    resized_heatmaps.append(color_ht.transpose(2, 0, 1))
+
+                resized_heatmaps = np.stack(resized_heatmaps, axis=0)
+
+                images = np.asarray(images_cpu).transpose(0, 2, 3, 1) * 0.6
+                heatmaps = np.asarray(resized_heatmaps).transpose(0, 2, 3, 1) * 0.4
+                overlayed_image = np.clip(images + heatmaps, 0, 1.)
+
+                for idx, image in enumerate(overlayed_image):
+                    # for joint in range(16):
+                    #     x, y = poses_2D[idx][joint] * 4
+                    #     for tx in range(-5, 5):
+                    #         for ty in range(-5, 5):
+                    #             xx, yy = (x + tx, y + ty)
+                    #             if not (0 <= xx <= 255) or not (0 <= yy <= 255):
+                    #                 continue
+                    #             image[int(yy), int(xx), :] = [1, 0, 0]
+                    imageio.imwrite('{idx}.jpg'.format(idx=idx), image)
+
+                break
 
 print(hit / total * 100)  # In percentage.
