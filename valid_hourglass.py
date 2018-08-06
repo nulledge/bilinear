@@ -74,17 +74,21 @@ with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
                 image_soft = np.asarray(images[batch].data)
 
                 diff = torch.zeros(16, 2)
+                valid = np.zeros(16)
 
                 for joint, heatmap in enumerate(outputs[batch]):
                     poses_2D[batch, joint, :] = softargmax(heatmap)
                     diff[joint] = poses_2D.data[batch][joint] - keypoints[batch][joint_map[joint]]
 
-                    if np.nonzero(heatmaps[batch][joint]).size != 0:
+                    if np.count_nonzero(heatmaps[batch][joint]) != 0:
                         total[joint] = total[joint] + 1
+                        valid[joint] = True
 
                 dist = torch.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)  # shape=(16)
 
                 for joint in torch.nonzero(torch.le(dist, 64 * 0.1)):
+                    if not valid[joint]:
+                        continue
                     hit[joint] = hit[joint] + 1
 
             progress.update(1)

@@ -114,20 +114,10 @@ class Dataset(torch_data.Dataset):
 
         image_name = annolist[img_idx].image.name
         image_path = '{image_path}/{image_name}'.format(image_path=self.image_path, image_name=image_name)
-        # image = skimage.io.imread(image_path)
-        # image = skimage.img_as_float(image)
         image = crop_image(image_path, center, scale, rotate)
 
-        # # Color jitter.
-        # if self.task == 'train':
-        #     for channel in range(3):
-        #         image[:, :, channel] *= uniform(0.6, 1.4)
-        #     image = np.clip(image, 0.0, 1.0)
-
         position = np.zeros(shape=(16, 2), dtype=np.float32)
-        heatmap = -1
-        if self.task == 'train':
-            heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
+        heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
 
         keypoints = annorect.annopoints.point
 
@@ -148,7 +138,7 @@ class Dataset(torch_data.Dataset):
             in_heatmap = in_heatmap + Vector2(64 // 2, 64 // 2)
             position[joint] = [in_heatmap.x, in_heatmap.y]
 
-            if self.task == 'valid' or min(in_heatmap) < 0 or max(in_heatmap) >= 64:
+            if min(in_heatmap) < 0 or max(in_heatmap) >= 64:
                 continue
 
             heatmap[joint, :, :] = draw_heatmap(64, in_heatmap.y, in_heatmap.x)
