@@ -7,11 +7,11 @@ from util import config
 
 
 def softargmax(in_tensor):
-    keypoint = np.full(shape=(2,), fill_value=-1)
+    keypoint = np.full(shape=(2,), fill_value=-1, dtype=np.float32)
     for dim in [0, 1]:
         data_along_axis = 10 * torch.sum(in_tensor, dim=dim)
         softmax = nn.Softmax(dim=0)(data_along_axis)
-        soft_argmax = torch.sum(softmax * torch.arange(0, 64).cuda())
+        soft_argmax = torch.sum(softmax * torch.arange(0, 64).to(torch.float).cuda())
 
         keypoint[dim] = soft_argmax
 
