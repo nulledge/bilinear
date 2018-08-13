@@ -5,10 +5,10 @@ pretrained = {
     'bilinear': '/media/nulledge/2nd/ubuntu/bilinear/pretrained/bilinear',
 }
 root = {
-    'MPII': '/media/nulledge/2nd/data/MPII/',
-    'Human3.6M': '/media/nulledge/2nd/data/Human3.6M/converted',
+    'MPII': '/media/nulledge/3rd/MPII',
+    'Human3.6M': '/media/nulledge/3rd/Human3.6M',
 }
-task = 'train'
+task = 'valid'
 batch_size = 8
 num_workers = 8
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
