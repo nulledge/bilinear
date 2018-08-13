@@ -27,7 +27,46 @@ data = DataLoader(
 )
 
 device = torch.device(config.device)
-hourglass, _, _, _, pretrained_epoch = Model.hourglass.load_model(device, config.pretrained['hourglass'])
+hourglass,optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_model(device, config.pretrained['hourglass'])
+
+train_loader = DataLoader(
+    MPII.Dataset(
+        root=config.root['MPII'],
+        task='train',
+    ),
+    batch_size=config.batch_size,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=config.num_workers,
+)
+
+step = 0
+
+with tqdm(total=len(train_loader), desc='%d epoch' % pretrained_epoch) as progress:
+
+    with torch.set_grad_enabled(True):
+
+        for images, heatmaps, keypoints in train_loader:
+            images_cpu = images
+            images = images.to(device)
+            heatmaps = heatmaps.to(device)
+
+            optimizer.zero_grad()
+            outputs = hourglass(images)
+
+            loss = sum([criterion(output, heatmaps) for output in outputs])
+            loss.backward()
+
+            nn.utils.clip_grad_norm_(hourglass.parameters(), max_norm=1)
+
+            optimizer.step()
+
+            progress.set_postfix(loss=float(loss.item()), max=float(torch.max(images_cpu)))
+            progress.update(1)
+            step = step + 1
+
+            if step > 1000:
+                break
 
 hourglass = hourglass.eval()
 
