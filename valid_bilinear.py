@@ -26,6 +26,8 @@ data = DataLoader(
 device = torch.device(config.device)
 bilinear, _, _, _, pretrained_epoch, _ = Model.bilinear.load_model(device, config.pretrained['bilinear'])
 
+bilinear.eval()
+
 total_dist = torch.zeros(17)
 total = 0
 
@@ -45,9 +47,14 @@ with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
 
             prediction = bilinear(in_image_space)
             prediction_in_camera_space = stddev * prediction + mean
+            in_camera_space = stddev * in_camera_space + mean
 
             ground_truth = in_camera_space.view(-1, 17, 3)
+            root = ground_truth[:, 0].view(-1, 1, 3)
+            ground_truth = ground_truth - root
             prediction = prediction_in_camera_space.view(-1, 17, 3)
+            root = prediction[:, 0].view(-1, 1, 3)
+            prediction = prediction - root
 
             dist = torch.sum(torch.sqrt(torch.sum((prediction - ground_truth) ** 2, dim=2)), dim=0)
             total_dist = total_dist + dist.cpu()
@@ -55,3 +62,4 @@ with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
             progress.update(1)
 
 print(total_dist / total)
+print(sum(total_dist) / (total*len(total_dist)))
