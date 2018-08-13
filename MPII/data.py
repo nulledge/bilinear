@@ -2,8 +2,10 @@ import math
 import numpy as np
 import os
 import scipy, scipy.io
+import skimage, skimage.io
+import torch
 import torch.utils.data as torch_data
-from random import random, shuffle
+from random import random, shuffle, uniform
 from torchvision import transforms
 from vectormath import Vector2
 
@@ -48,7 +50,7 @@ class Dataset(torch_data.Dataset):
 
         if self.task == 'train':
             self.transform = transforms.Compose([
-                transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
+                # transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
                 transforms.ToTensor(),
             ])
         else:
@@ -114,7 +116,8 @@ class Dataset(torch_data.Dataset):
 
         image_name = annolist[img_idx].image.name
         image_path = '{image_path}/{image_name}'.format(image_path=self.image_path, image_name=image_name)
-        image = crop_image(image_path, center, scale, rotate)
+        image = skimage.img_as_float(skimage.io.imread(image_path))
+        image = crop_image(image, center, scale, rotate, resolution=256)
 
         position = np.zeros(shape=(16, 2), dtype=np.float32)
         heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
@@ -143,7 +146,24 @@ class Dataset(torch_data.Dataset):
 
             heatmap[joint, :, :] = draw_heatmap(64, in_heatmap.y, in_heatmap.x)
 
-        return self.transform(image), heatmap, position
+        # image = transforms.ToTensor()(image)
+        image = image.astype(dtype=np.float32)
+        if self.task == 'train':
+            image[:, :, 0] *= uniform(0.6, 1.4)
+            image[:, :, 1] *= uniform(0.6, 1.4)
+            image[:, :, 2] *= uniform(0.6, 1.4)
+            image = np.clip(image, 0, 1)
+        #     image[0, :, :] *= uniform(0.6, 1.4)
+        #     image[1, :, :] *= uniform(0.6, 1.4)
+        #     image[2, :, :] *= uniform(0.6, 1.4)
+        #     image = torch.clamp(image, 0, 1)
+            # r, g, b = image.split()
+            # r = r.point(lambda r: r * uniform(0.6, 1.4))
+            # g = r.point(lambda g: g * uniform(0.6, 1.4))
+            # b = r.point(lambda b: b * uniform(0.6, 1.4))
+            # image = Image.merge('RGB', (r, g, b))
+
+        return image.transpose(2, 0, 1), heatmap, position
 
     def __len__(self):
         return len(self.subset)
