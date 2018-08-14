@@ -14,25 +14,10 @@ from util import config
 
 assert config.task == 'valid'
 
-
 data = DataLoader(
     MPII.Dataset(
         root=config.root['MPII'],
         task=config.task,
-    ),
-    batch_size=config.batch_size,
-    shuffle=False,
-    pin_memory=True,
-    num_workers=config.num_workers,
-)
-
-device = torch.device(config.device)
-hourglass,optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_model(device, config.pretrained['hourglass'])
-
-train_loader = DataLoader(
-    MPII.Dataset(
-        root=config.root['MPII'],
-        task='train',
     ),
     batch_size=config.batch_size,
     shuffle=True,
@@ -40,11 +25,58 @@ train_loader = DataLoader(
     num_workers=config.num_workers,
 )
 
-step = 0
+device = torch.device(config.device)
+hourglass, optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_model(device,
+                                                                                     config.pretrained['hourglass'])
+
+
+mean_and_var = [
+    float(hourglass.hourglass[1].res.conv[0][0].running_mean.max()),
+    float(hourglass.hourglass[1].res.conv[0][0].running_var.max()),
+    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_mean.max()),
+    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_var.max()),
+]
+print('before reset:', mean_and_var)
+
+for key, value in hourglass.state_dict().items():
+    if 'running_mean' in key:
+
+        layer = hourglass
+        modules = key.split('.')[:-1]
+        for module in modules:
+            if module.isdigit():
+                layer = layer[int(module)]
+            else:
+                layer = getattr(layer, module)
+        layer.reset_running_stats()
+        layer.momentum = None
+
+
+mean_and_var = [
+    float(hourglass.hourglass[1].res.conv[0][0].running_mean.max()),
+    float(hourglass.hourglass[1].res.conv[0][0].running_var.max()),
+    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_mean.max()),
+    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_var.max()),
+]
+print('after reset', mean_and_var)
+
+train_loader = DataLoader(
+    MPII.Dataset(
+        root=config.root['MPII'],
+        task='train',
+        augment=False,
+    ),
+    batch_size=config.batch_size,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=config.num_workers,
+)
+
+hourglass.train()
 
 with tqdm(total=len(train_loader), desc='%d epoch' % pretrained_epoch) as progress:
 
-    with torch.set_grad_enabled(True):
+    with torch.set_grad_enabled(False):
 
         for images, heatmaps, keypoints in train_loader:
             images_cpu = images
@@ -54,30 +86,25 @@ with tqdm(total=len(train_loader), desc='%d epoch' % pretrained_epoch) as progre
             optimizer.zero_grad()
             outputs = hourglass(images)
 
-            loss = sum([criterion(output, heatmaps) for output in outputs])
-            loss.backward()
-
-            nn.utils.clip_grad_norm_(hourglass.parameters(), max_norm=1)
-
-            optimizer.step()
-
-            progress.set_postfix(loss=float(loss.item()), max=float(torch.max(images_cpu)))
             progress.update(1)
-            step = step + 1
-
-            if step > 1000:
-                break
 
 hourglass = hourglass.eval()
 
-hit = np.zeros(shape=(16,), dtype=np.uint32)
-total = np.zeros(shape=(16,), dtype=np.uint32)
+total = torch.zeros(hourglass.joints).cuda()
+hit = torch.zeros(hourglass.joints).cuda()
+
+mean_and_var = [
+    float(hourglass.hourglass[1].res.conv[0][0].running_mean.max()),
+    float(hourglass.hourglass[1].res.conv[0][0].running_var.max()),
+    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_mean.max()),
+    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_var.max()),
+]
+print('after train:', mean_and_var)
 
 with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
     with torch.set_grad_enabled(False):
         for images, heatmaps, keypoints in data:
 
-            images_cpu = images
             images_device = images.to(device)
 
             outputs = hourglass(images_device)
@@ -85,57 +112,29 @@ with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
 
             n_batch = outputs.shape[0]
 
-            poses_2D = torch.zeros(n_batch, 16, 2)  # MPII has 16 joints.
+            # joint_map = [13, 12, 14, 11, 15, 10, 3, 2, 4, 1, 5, 0, 6, 7, 8, 9]
+            joint_map = [x for x in range(16)]
 
             for batch in range(n_batch):
-                image_soft = np.asarray(images[batch].data)
-
-                diff = torch.zeros(16, 2)
-                valid = np.zeros(16)
-
                 for joint, heatmap in enumerate(outputs[batch]):
-                    poses_2D[batch, joint, :] = softargmax(heatmap)
-                    diff[joint] = poses_2D.data[batch][joint] - keypoints[batch][joint]
 
-                    if np.count_nonzero(heatmaps[batch][joint]) != 0:
-                        total[joint] = total[joint] + 1
-                        valid[joint] = True
-
-                dist = torch.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)  # shape=(16)
-
-                for joint in torch.nonzero(torch.le(dist, 64 * 0.1)):
-                    if not valid[joint]:
+                    # The empty heatmap means not-annotated.
+                    if np.count_nonzero(heatmaps[batch][joint]) == 0:
                         continue
-                    hit[joint] = hit[joint] + 1
+
+                    total[joint] = total[joint] + 1
+
+                    pose = torch.argmax(heatmap.view(-1))
+                    pose = torch.Tensor([int(pose) % 64, int(pose) // 64])
+
+                    dist = pose - keypoints[batch][joint_map[joint]]
+                    dist = torch.sqrt(torch.sum(dist * dist))
+
+                    if torch.le(dist, 64 * 0.1):
+                        hit[joint] = hit[joint] + 1
 
             progress.update(1)
 
-            if False:
-                heatmaps = merge_to_color_heatmap(outputs)
-                heatmaps = heatmaps.permute(0, 2, 3, 1).cpu()  # NHWC
-
-                resized_heatmaps = list()
-                for idx, ht in enumerate(heatmaps):
-                    color_ht = skimage.transform.resize(ht.numpy(), (256, 256), mode='constant')
-                    resized_heatmaps.append(color_ht.transpose(2, 0, 1))
-
-                resized_heatmaps = np.stack(resized_heatmaps, axis=0)
-
-                images = np.asarray(images_cpu).transpose(0, 2, 3, 1) * 0.6
-                heatmaps = np.asarray(resized_heatmaps).transpose(0, 2, 3, 1) * 0.4
-                overlayed_image = np.clip(images + heatmaps, 0, 1.)
-
-                for idx, image in enumerate(overlayed_image):
-                    # for joint in range(16):
-                    #     x, y = poses_2D[idx][joint] * 4
-                    #     for tx in range(-5, 5):
-                    #         for ty in range(-5, 5):
-                    #             xx, yy = (x + tx, y + ty)
-                    #             if not (0 <= xx <= 255) or not (0 <= yy <= 255):
-                    #                 continue
-                    #             image[int(yy), int(xx), :] = [1, 0, 0]
-                    imageio.imwrite('{idx}.jpg'.format(idx=idx), image)
-
-                break
-
+print(hit)
+print(total)
 print(hit / total * 100)  # In percentage.

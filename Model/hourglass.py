@@ -6,7 +6,7 @@ import os
 
 def light_conv(in_channels, out_channels, kernel_size, stride=1, padding=0, bias=False):
     return nn.Sequential(
-        nn.BatchNorm2d(in_channels),
+        nn.BatchNorm2d(in_channels, momentum=None),
         nn.ReLU(),
         nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias),
     )
@@ -100,7 +100,7 @@ class StackedHourglass(nn.Module):
 
         self.feature_extraction = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False),
-            # nn.BatchNorm2d(num_features=64),
+            # nn.BatchNorm2d(num_features=64, momentum=None),
             # nn.ReLU(),
             ResUnit(in_channels=64, out_channels=128),
             nn.MaxPool2d(2),
