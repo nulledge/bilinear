@@ -48,9 +48,7 @@ def draw_line(x, y, window):
                     update='append' if window is not None else None)
 
 
-def draw_merged_image(heatmaps, images, window):
-    assert viz.check_connection()
-
+def draw_merged_image(heatmaps, images):
     heatmaps = merge_to_color_heatmap(heatmaps.data)
     heatmaps = heatmaps.permute(0, 2, 3, 1).cpu()  # NHWC
 
@@ -64,7 +62,9 @@ def draw_merged_image(heatmaps, images, window):
     images = images * 0.6
     overlayed_image = np.clip(images + resized_heatmaps * 0.4, 0, 1.)
 
-    return viz.images(tensor=overlayed_image, nrow=4, win=window)
+    return overlayed_image
+
+    # return viz.images(tensor=overlayed_image, nrow=4, win=window)
 
 
 def draw(step, loss, images, heatmaps, outputs, windows):

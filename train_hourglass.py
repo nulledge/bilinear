@@ -1,16 +1,17 @@
-import numpy as np
 import torch
 import torch.nn as nn
-import imageio
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import MPII
 import Model.hourglass
-from util.visualize import draw, draw_line
+from util.visualize import draw_merged_image
 from util import config
+from tensorboardX import SummaryWriter
 
 assert config.task == 'train'
+
+writer = SummaryWriter()
 
 data = DataLoader(
     MPII.Dataset(
@@ -29,10 +30,9 @@ hourglass, optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_m
 
 hourglass.train()
 
-loss_window, gt_image_window, out_image_window = None, None, None
-max_mean_1_window, max_var_1_window = None, None
-max_mean_2_window, max_var_2_window = None, None
-windows = [loss_window, gt_image_window, out_image_window]
+dummy = torch.rand(1, 3, 256, 256).to(config.device)
+with SummaryWriter(comment='Hourglass') as w:
+    w.add_graph(hourglass, input_to_model=dummy)
 
 for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
@@ -54,28 +54,17 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
 
                 optimizer.step()
 
-                mean_and_var = [
-                    float(hourglass.hourglass[1].res.conv[0][0].running_mean.max()),
-                    float(hourglass.hourglass[1].res.conv[0][0].running_var.max()),
-                    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_mean.max()),
-                    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_var.max()),
-                ]
+                writer.add_scalar('data/loss', loss.item(), step)
+                if step % 300 == 0:
+                    for name, param in hourglass.named_parameters():
+                        writer.add_histogram(name, param.clone().cpu().data.numpy(), step)
 
-                max_mean_1_window = draw_line(x=step,
-                                              y=np.array([mean_and_var[0]]),
-                                              window=max_mean_1_window)
-                max_var_1_window = draw_line(x=step,
-                                             y=np.array([mean_and_var[1]]),
-                                             window=max_var_1_window)
-                max_mean_2_window = draw_line(x=step,
-                                              y=np.array([mean_and_var[2]]),
-                                              window=max_mean_2_window)
-                max_var_2_window = draw_line(x=step,
-                                             y=np.array([mean_and_var[3]]),
-                                             window=max_var_2_window)
-
-                if config.visualize:
-                    windows = draw(step, loss, images_cpu, heatmaps, outputs, windows)
+                    out = outputs[-1, :].squeeze().contiguous()
+                    gt_images = images.cpu().numpy()
+                    true_img = draw_merged_image(out, gt_images.copy())
+                    infr_img = draw_merged_image(heatmaps, gt_images.copy())
+                    writer.add_image('Ground truth image', true_img, step)
+                    writer.add_image('Inference image', infr_img, step)
 
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
