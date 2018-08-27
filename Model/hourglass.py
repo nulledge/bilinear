@@ -156,14 +156,21 @@ def load_model(device, pretrained):
     step = np.zeros([1], dtype=np.uint32)
 
     pretrained_epoch = 0
+    eval_data = False
+
     for _, _, files in os.walk(pretrained):
         for file in files:
             name, extension = file.split('.')
             epoch = int(name)
             if epoch > pretrained_epoch:
                 pretrained_epoch = epoch
+            if epoch == -1:
+                eval_data = True
 
     if pretrained_epoch > 0:
+        if eval_data:
+            pretrained_epoch = -1
+
         pretrained_model = os.path.join(
             '{pretrained}/{epoch}.save'.format(pretrained=pretrained, epoch=pretrained_epoch))
         pretrained_model = torch.load(pretrained_model)
