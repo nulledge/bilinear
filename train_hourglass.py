@@ -1,13 +1,13 @@
-import numpy as np
 import torch
 import torch.nn as nn
-import imageio
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from tqdm import tqdm
+from tensorboardX import SummaryWriter
 
 import MPII
 import Model.hourglass
-from util.visualize import draw, draw_line
+from util.visualize import colorize, overlap
 from util import config
 
 assert config.task == 'train'
@@ -29,10 +29,7 @@ hourglass, optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_m
 
 hourglass.train()
 
-loss_window, gt_image_window, out_image_window = None, None, None
-max_mean_1_window, max_var_1_window = None, None
-max_mean_2_window, max_var_2_window = None, None
-windows = [loss_window, gt_image_window, out_image_window]
+writer = SummaryWriter(log_dir='/media/nulledge/2nd/ubuntu/bilinear/log')
 
 for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
@@ -40,7 +37,6 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
         with torch.set_grad_enabled(True):
 
             for images, heatmaps, keypoints in data:
-                images_cpu = images
                 images = images.to(device)
                 heatmaps = heatmaps.to(device)
 
@@ -54,28 +50,20 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
 
                 optimizer.step()
 
-                mean_and_var = [
-                    float(hourglass.hourglass[1].res.conv[0][0].running_mean.max()),
-                    float(hourglass.hourglass[1].res.conv[0][0].running_var.max()),
-                    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_mean.max()),
-                    float(hourglass.hourglass[7].upscale[0][0].conv[0][0].running_var.max()),
-                ]
+                writer.add_scalar('data/loss', loss, step)
+                if step % 10 == 0:
+                    resize = transforms.Compose([
+                        transforms.ToPILImage(),
+                        transforms.Resize(size=[64, 64]),
+                        transforms.ToTensor(),
+                    ])
+                    images = torch.stack([resize(image) for image in images.cpu()]).to(device)
 
-                max_mean_1_window = draw_line(x=step,
-                                              y=np.array([mean_and_var[0]]),
-                                              window=max_mean_1_window)
-                max_var_1_window = draw_line(x=step,
-                                             y=np.array([mean_and_var[1]]),
-                                             window=max_var_1_window)
-                max_mean_2_window = draw_line(x=step,
-                                              y=np.array([mean_and_var[2]]),
-                                              window=max_mean_2_window)
-                max_var_2_window = draw_line(x=step,
-                                             y=np.array([mean_and_var[3]]),
-                                             window=max_var_2_window)
+                    ground_truth = overlap(images=images, heatmaps=colorize(heatmaps))
+                    prediction = overlap(images=images, heatmaps=colorize(outputs[-1]))
 
-                if config.visualize:
-                    windows = draw(step, loss, images_cpu, heatmaps, outputs, windows)
+                    writer.add_image('ground truth', ground_truth.data, step)
+                    writer.add_image('prediction', prediction.data, step)
 
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
@@ -90,3 +78,5 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 100 + 1):
         },
         '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['hourglass'], epoch=epoch)
     )
+
+writer.close()
