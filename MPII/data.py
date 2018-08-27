@@ -2,10 +2,8 @@ import math
 import numpy as np
 import os
 import scipy, scipy.io
-import skimage, skimage.io
-import torch
 import torch.utils.data as torch_data
-from random import random, shuffle, uniform
+from random import random, shuffle
 from torchvision import transforms
 from vectormath import Vector2
 
@@ -13,25 +11,6 @@ from .util import rand, crop_image, draw_heatmap
 
 
 class Dataset(torch_data.Dataset):
-
-    # ID_TO_JOINT = {
-    #     0: JOINT.R_Ankle,
-    #     1: JOINT.R_Knee,
-    #     2: JOINT.R_Hip,
-    #     3: JOINT.L_Hip,
-    #     4: JOINT.L_Knee,
-    #     5: JOINT.L_Ankle,
-    #     6: JOINT.M_Pelvis,
-    #     7: JOINT.M_Thorax,
-    #     8: JOINT.M_UpperNeck,
-    #     9: JOINT.M_HeadTop,
-    #     10: JOINT.R_Wrist,
-    #     11: JOINT.R_Elbow,
-    #     12: JOINT.R_Shoulder,
-    #     13: JOINT.L_Shoulder,
-    #     14: JOINT.L_Elbow,
-    #     15: JOINT.L_Wrist
-    # }
 
     def __init__(self, root, task, augment=True):
         self.root = root
@@ -48,6 +27,11 @@ class Dataset(torch_data.Dataset):
         if not os.path.exists(self.subset_path):
             self.refresh_subset()
         self.subset = np.loadtxt(self.subset_path, dtype=np.int32)
+
+        self.transform = transforms.ToTensor()
+
+        if self.task == 'train' and self.augment:
+            self.color_jitter = transforms.ColorJitter(0.3, 0.3, 0.3, 0.3)
 
     def refresh_subset(self):
         correct = list()
@@ -102,13 +86,12 @@ class Dataset(torch_data.Dataset):
             rotate = rand(30) if random() <= 0.4 else 0.0
 
         objpos = annorect.objpos
-        center = Vector2(objpos.x, objpos.y)
+        center = Vector2(objpos.x, objpos.y + 15 * annorect.scale)
         center.setflags(write=False)
 
         image_name = annolist[img_idx].image.name
         image_path = '{image_path}/{image_name}'.format(image_path=self.image_path, image_name=image_name)
-        image = skimage.img_as_float(skimage.io.imread(image_path))
-        image = crop_image(image, center, scale, rotate, resolution=256)
+        image = crop_image(image_path, center, scale, rotate)
 
         position = np.zeros(shape=(16, 2), dtype=np.float32)
         heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
@@ -137,14 +120,10 @@ class Dataset(torch_data.Dataset):
 
             heatmap[joint, :, :] = draw_heatmap(64, in_heatmap.y, in_heatmap.x)
 
-        image = image.astype(dtype=np.float32)
         if self.task == 'train' and self.augment:
-            image[:, :, 0] *= uniform(0.6, 1.4)
-            image[:, :, 1] *= uniform(0.6, 1.4)
-            image[:, :, 2] *= uniform(0.6, 1.4)
-            image = np.clip(image, 0, 1)
+            image = self.color_jitter(image)
 
-        return image.transpose(2, 0, 1), heatmap, position
+        return self.transform(image), heatmap, position
 
     def __len__(self):
         return len(self.subset)

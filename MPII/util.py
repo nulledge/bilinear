@@ -11,10 +11,14 @@ def rand(x):
     return max(-2 * x, min(2 * x, gauss(0, 1) * x))
 
 
-def crop_image(image, center, scale, rotate, resolution):
+def crop_image(image_path, center, scale, rotate, resolution=256):
+    image = Image.open(image_path)
+
+    width, height = image.size
     center = Vector2(center)  # assign new array
-    height, width, _ = image.shape
+
     crop_ratio = 200 * scale / resolution
+
     if crop_ratio >= 2:  # if box size is greater than two time of resolution px
         # scale down image
         height = math.floor(height / crop_ratio)
@@ -24,7 +28,8 @@ def crop_image(image, center, scale, rotate, resolution):
             # Zoomed out so much that the image is now a single pixel or less
             raise ValueError("Width or height is invalid!")
 
-        image = skimage.transform.resize(image, (height, width), mode='constant')
+        image = image.resize((width, height), Image.BILINEAR)
+
         center /= crop_ratio
         scale /= crop_ratio
 
@@ -34,25 +39,26 @@ def crop_image(image, center, scale, rotate, resolution):
     if crop_ratio >= 2:  # force image size 256 x 256
         br -= (br - ul - resolution)
 
-    pad_length = math.ceil((ul - br).length - (br.x - ul.x) / 2)
+    pad_length = math.ceil(((ul - br).length - (br.x - ul.x)) / 2)
 
     if rotate != 0:
         ul -= pad_length
         br += pad_length
 
-    src = [max(0, ul.y), min(height, br.y), max(0, ul.x), min(width, br.x)]
-    dst = [max(0, -ul.y), min(height, br.y) - ul.y, max(0, -ul.x), min(width, br.x) - ul.x]
+    crop_src = [max(0, ul.x), max(0, ul.y), min(width, br.x), min(height, br.y)]
+    crop_dst = [max(0, -ul.x), max(0, -ul.y), min(width, br.x) - ul.x, min(height, br.y) - ul.y]
+    crop_image = image.crop(crop_src)
 
-    new_image = np.zeros([br.y - ul.y, br.x - ul.x, 3], dtype=np.float64)
-    new_image[dst[0]:dst[1], dst[2]:dst[3], :] = image[src[0]:src[1], src[2]:src[3], :]
+    new_image = Image.new("RGB", (br.x - ul.x, br.y - ul.y))
+    new_image.paste(crop_image, box=crop_dst)
 
     if rotate != 0:
-        new_image = skimage.transform.rotate(new_image, rotate)
-        new_height, new_width, _ = new_image.shape
-        new_image = new_image[pad_length:new_height - pad_length, pad_length:new_width - pad_length, :]
+        new_image = new_image.rotate(rotate, resample=Image.BILINEAR)
+        new_image = new_image.crop(box=(pad_length, pad_length,
+                                        new_image.width - pad_length, new_image.height - pad_length))
 
     if crop_ratio < 2:
-        new_image = skimage.transform.resize(new_image, (resolution, resolution), mode='constant')
+        new_image = new_image.resize((resolution, resolution), Image.BILINEAR)
 
     return new_image
 
