@@ -4,10 +4,12 @@ venv/
 log/
 
 # Jupyter notebook
+*.ipynb
 .ipynb_checkpoints
 
 # Python
 __pycache__/
+*.pyc
 
 # Binary
 *.png
@@ -20,3 +22,8 @@ H36M.conf
 
 # Log
 *.log
+
+# Symbolic link
+log
+data
+parameter
