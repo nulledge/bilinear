@@ -3,49 +3,47 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from tensorboardX import SummaryWriter
 
 import H36M
-import Model.bilinear
-from util.visualize import draw_line
+import model.bilinear
 from util import config
 
-dataset = H36M.Dataset(
-    root=config.root['Human3.6M'],
-    task=config.task,
-)
 data = DataLoader(
-    dataset,
-    batch_size=config.batch_size,
+    H36M.Dataset(
+        root=config.bilinear.data_dir,
+        task='train',
+    ),
+    batch_size=config.bilinear.batch_size,
     shuffle=True,
     pin_memory=True,
-    num_workers=config.num_workers,
+    num_workers=config.bilinear.num_workers,
 )
 
-device = torch.device(config.device)
-bilinear, optimizer, criterion, step, pretrained_epoch, lr = Model.bilinear.load_model(device,
-                                                                                       config.pretrained['bilinear'])
+bilinear, optimizer, step, train_epoch = model.bilinear.load(config.bilinear.parameter_dir, config.bilinear.device)
+criterion = nn.MSELoss()
+writer = SummaryWriter(log_dir=config.bilinear.log_dir)
 
-loss_window = None
-windows = [loss_window]
+bilinear.train()
 
-for epoch in range(pretrained_epoch + 1, pretrained_epoch + 200 + 1):
+for epoch in range(train_epoch+ 1, train_epoch + 200 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
-
         with torch.set_grad_enabled(True):
             for in_image_space, in_camera_space, center, scale, _, _ in data:
 
+                # Learning rate decay
                 if step % 100000 == 0 or step == 1:
                     lr = 1.0e-3 * 0.96 ** (step / 100000)
                     for param_group in optimizer.param_groups:
                         param_group['lr'] = lr
 
-                in_image_space = in_image_space.to(device).view(-1, 2 * 17)
-                in_camera_space = in_camera_space.to(device).view(-1, 3 * 17)
+                in_image_space = in_image_space.to(config.bilinear.device).view(-1, 2 * 17)
+                in_camera_space = in_camera_space.to(config.bilinear.device).view(-1, 3 * 17)
 
                 optimizer.zero_grad()
-                prediciton = bilinear(in_image_space)
+                prediction = bilinear(in_image_space)
 
-                loss = criterion(prediciton, in_camera_space)
+                loss = criterion(prediction, in_camera_space)
                 loss.backward()
 
                 nn.utils.clip_grad_norm_(bilinear.parameters(), max_norm=1)
@@ -53,10 +51,7 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 200 + 1):
                 optimizer.step()
 
                 # Too frequent update reduces the performance.
-                if step % 50 == 0:
-                    loss_window = draw_line(x=np.asarray([step]),
-                                            y=np.array([float(loss.data)]),
-                                            window=loss_window)
+                writer.add_scalar('loss', loss, step)
 
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
@@ -68,7 +63,6 @@ for epoch in range(pretrained_epoch + 1, pretrained_epoch + 200 + 1):
                 'step': step,
                 'state': bilinear.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                'lr': lr,
             },
-            '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['bilinear'], epoch=epoch)
+            '{parameter_dir}/{epoch}.save'.format(parameter_dir=config.bilinear.parameter_dir, epoch=epoch)
         )

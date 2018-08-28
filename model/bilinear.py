@@ -39,37 +39,34 @@ class BilinearUnit(nn.Module):
         return out_tensor
 
 
-def load_model(device, pretrained):
-    lr = 1.0e-3
+def load(parameter_dir, device, learning_rate=1.0e-3):
     bilinear = BilinearUnit().to(device)
-    criterion = nn.MSELoss().to(device)
-    optimizer = torch.optim.Adam(bilinear.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(bilinear.parameters(), lr=learning_rate)
     step = 1
 
-    pretrained_epoch = 0
-    for _, _, files in os.walk(pretrained):
+    epoch_to_load = 0
+    for _, _, files in os.walk(parameter_dir):
         for file in files:
+            # The name of parameter file is {epoch}.save
             name, extension = file.split('.')
             epoch = int(name)
-            if epoch > pretrained_epoch:
-                pretrained_epoch = epoch
 
-    if pretrained_epoch > 0:
-        pretrained_model = os.path.join(
-            '{pretrained}/{epoch}.save'.format(pretrained=pretrained, epoch=pretrained_epoch))
-        pretrained_model = torch.load(pretrained_model)
+            if (epoch > epoch_to_load and not epoch_to_load == -1) or epoch == -1:
+                epoch_to_load = epoch
 
-        bilinear.load_state_dict(pretrained_model['state'])
-        step = pretrained_model['step']
-        lr = pretrained_model['lr']
-        optimizer.load_state_dict(pretrained_model['optimizer'])
+    if epoch_to_load != 0:
+        parameter_file = '{parameter_dir}/{epoch}.save'.format(parameter_dir=parameter_dir, epoch=epoch_to_load)
+        parameter = torch.load(parameter_file)
+
+        bilinear.load_state_dict(parameter['state'])
+        optimizer.load_state_dict(parameter['optimizer'])
+        step = parameter['step']
 
     else:
-
         def weight_init(m):
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal(m.weight)
 
         bilinear.apply(weight_init)  # (lambda x: nn.init.kaiming_normal(x.weight)))
 
-    return bilinear, optimizer, criterion, step, pretrained_epoch, lr
+    return bilinear, optimizer, step, epoch_to_load
