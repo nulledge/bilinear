@@ -11,7 +11,7 @@ from util import config
 
 data = DataLoader(
     H36M.Dataset(
-        root=config.bilinear.data_dir,
+        data_dir=config.bilinear.data_dir,
         task='train',
     ),
     batch_size=config.bilinear.batch_size,
