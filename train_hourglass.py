@@ -10,6 +10,8 @@ import model.hourglass
 from util import config
 from util.visualize import colorize, overlap
 
+writer = SummaryWriter()
+
 data = DataLoader(
     MPII.Dataset(
         root=config.hourglass.data_dir,
