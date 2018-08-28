@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.io
 import torch
+import torch.nn as nn
 import torch.utils.data as torch_data
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
@@ -8,65 +9,51 @@ from vectormath import Vector2
 from tqdm import tqdm
 
 import MPII
-import Model.hourglass
+import model.hourglass
 from util import config
 from MPII.util import crop_image
 
-assert config.task == 'eval'
+hourglass, optimizer, step, train_epoch = model.hourglass.load(config.hourglass.parameter_dir, config.hourglass.device)
+criterion = nn.MSELoss()
 
-device = torch.device(config.device)
-hourglass, optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_model(device,
-                                                                                     config.pretrained['hourglass'])
+# train_epoch equals -1 means that training is over
+if train_epoch != -1:
 
-if pretrained_epoch != -1:
-
-    for key, value in hourglass.state_dict().items():
-        if 'running_mean' in key:
-
-            layer = hourglass
-            modules = key.split('.')[:-1]
-            for module in modules:
-                if module.isdigit():
-                    layer = layer[int(module)]
-                else:
-                    layer = getattr(layer, module)
-            layer.reset_running_stats()
-            layer.momentum = None
+    # Reset statistics of batch normalization
+    hourglass.reset_statistics()
+    hourglass.train()
 
     train_loader = DataLoader(
         MPII.Dataset(
-            root=config.root['MPII'],
+            root=config.hourglass.data_dir,
             task='train',
             augment=False,
         ),
-        batch_size=config.batch_size,
+        batch_size=config.hourglass.batch_size,
         shuffle=True,
         pin_memory=True,
-        num_workers=config.num_workers,
+        num_workers=config.hourglass.num_workers,
     )
 
-    hourglass.train()
-
-    with tqdm(total=len(train_loader), desc='%d epoch' % pretrained_epoch) as progress:
+    # Compute statistics of batch normalization from the train subset
+    with tqdm(total=len(train_loader), desc='%d epoch' % train_epoch) as progress:
         with torch.set_grad_enabled(False):
-            for images, heatmaps, keypoints in train_loader:
-                images_cpu = images
-                images = images.to(device)
-                heatmaps = heatmaps.to(device)
-
-                optimizer.zero_grad()
+            for images, _, _, _, _, _ in train_loader:
+                images = images.to(config.hourglass.device)
                 outputs = hourglass(images)
 
                 progress.update(1)
 
+    # epoch equals -1 means that training is over
+    epoch = -1
     torch.save(
         {
-            'epoch': -1,
+            'epoch': epoch,
             'step': step,
             'state': hourglass.state_dict(),
             'optimizer': optimizer.state_dict(),
         },
-        '{pretrained}/{epoch}.save'.format(pretrained=config.pretrained['hourglass'], epoch=-1)
+        '{parameter_dir}/{epoch}.save'.format(parameter_dir=config.hourglass.parameter_dir, epoch=epoch)
     )
 
 hourglass = hourglass.eval()
@@ -74,11 +61,12 @@ hourglass = hourglass.eval()
 
 class EvalData(torch_data.Dataset):
 
-    def __init__(self):
-        anno = '/media/nulledge/3rd/data/MPII/mpii_human_pose_v1_u12_2/mpii_human_pose_v1_u12_1.mat'
+    def __init__(self, eval_on_training_and_valid_subset=False):
+        anno = '{data_dir}/mpii_human_pose_v1_u12_2/mpii_human_pose_v1_u12_1.mat'.format(
+            data_dir=config.hourglass.data_dir)
         anno = scipy.io.loadmat(anno, squeeze_me=True, struct_as_record=False)['RELEASE']
 
-        test_subset = np.where(anno.img_train == 0)
+        test_subset = np.where(anno.img_train == eval_on_training_and_valid_subset)
         annolist = anno.annolist[test_subset]
         single_person = anno.single_person[test_subset]
 
@@ -129,8 +117,7 @@ class EvalData(torch_data.Dataset):
         img_idx = data['img_idx']
         r_idx = data['r_idx']
 
-        image_path = '{image_path}/{image_name}'.format(image_path='/media/nulledge/3rd/data/MPII/images',
-                                                        image_name=img_name)
+        image_path = '{data_dir}/images/{image_name}'.format(data_dir=config.hourglass.data_dir, image_name=img_name)
         image = crop_image(image_path, center, scale, rotate)
 
         return self.to_tensor(image), np.asarray([center.x, center.y], dtype=np.float32), scale, img_idx, r_idx
@@ -140,19 +127,19 @@ class EvalData(torch_data.Dataset):
 
 
 test_data = torch_data.DataLoader(
-    EvalData(),
-    batch_size=8,
+    EvalData(eval_on_training_and_valid_subset=True),
+    batch_size=config.hourglass.batch_size,
     shuffle=False,
     pin_memory=True,
-    num_workers=8,
+    num_workers=config.hourglass.num_workers,
 )
 
-with tqdm(total=len(test_data), desc='%d epoch' % pretrained_epoch) as progress:
+with tqdm(total=len(test_data), desc='%d epoch' % train_epoch) as progress:
     with torch.set_grad_enabled(False):
         for images, centers, scales, img_idxs, r_idxs in test_data:
-            images = images.to(device)
-            centers = centers.to(device).float()
-            scales = scales.to(device).float()
+            images = images.to(config.hourglass.device)
+            centers = centers.to(config.hourglass.device).float()
+            scales = scales.to(config.hourglass.device).float()
             outputs = hourglass(images)
             outputs = outputs[-1]  # Heatmaps from the last stack in batch-channel-height-width shape.
 
@@ -167,12 +154,10 @@ with tqdm(total=len(test_data), desc='%d epoch' % pretrained_epoch) as progress:
             poses = centers.view(n_batch, 1, 2) + poses / 64 * scales.view(n_batch, 1, 1) * 200
 
             for batch, img_idx, r_idx in zip(range(n_batch), img_idxs, r_idxs):
-                with open('/media/nulledge/2nd/ubuntu/bilinear/prediction/{img_idx}.{r_idx}.txt'.format(img_idx=img_idx,
-                                                                                                        r_idx=r_idx),
-                          'w') as f:
+                with open('{prediction_dir}/{img_idx}.{r_idx}.txt'.format(
+                        prediction_dir=config.hourglass.prediction_dir, img_idx=img_idx, r_idx=r_idx), 'w') as f:
                     pose = poses[batch]
                     for joint in range(16):
                         f.writelines('{joint} {x} {y}\n'.format(joint=joint, x=pose[joint, 0], y=pose[joint, 1]))
 
             progress.update(1)
-

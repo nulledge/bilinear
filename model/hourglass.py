@@ -150,41 +150,42 @@ class StackedHourglass(nn.Module):
 
         return torch.cat(out_heatmap, 0)
 
+    def reset_statistics(self):
+        for key, value in self.state_dict().items():
+            if 'running_mean' in key:
 
-def load_model(device, pretrained):
-    hourglass = StackedHourglass(stacks=8, joints=16)
+                layer = self
+                modules = key.split('.')[:-1]
+                for module in modules:
+                    if module.isdigit():
+                        layer = layer[int(module)]
+                    else:
+                        layer = getattr(layer, module)
+                layer.reset_running_stats()
+                layer.momentum = None
+
+
+def load(parameter_dir, device):
+    hourglass = StackedHourglass(stacks=8, joints=16).to(device)
+    optimizer = torch.optim.RMSprop(hourglass.parameters(), lr=2.5e-4)
     step = np.zeros([1], dtype=np.uint32)
 
-    pretrained_epoch = 0
-    eval_data = False
-
-    for _, _, files in os.walk(pretrained):
-        for file in files:
-            name, extension = file.split('.')
+    epoch_to_load = 0
+    for _, _, files in os.walk(parameter_dir):
+        for parameter_file in files:
+            # The name of parameter file is {epoch}.save
+            name, extension = parameter_file.split('.')
             epoch = int(name)
-            if epoch > pretrained_epoch:
-                pretrained_epoch = epoch
-            if epoch == -1:
-                eval_data = True
 
-    if pretrained_epoch > 0:
-        if eval_data:
-            pretrained_epoch = -1
+            if (epoch > epoch_to_load and not epoch_to_load == -1) or epoch == -1:
+                epoch_to_load = epoch
 
-        pretrained_model = os.path.join(
-            '{pretrained}/{epoch}.save'.format(pretrained=pretrained, epoch=pretrained_epoch))
-        pretrained_model = torch.load(pretrained_model)
+    if epoch_to_load != 0:
+        parameter_file = '{parameter_dir}/{epoch}.save'.format(parameter_dir=parameter_dir, epoch=epoch_to_load)
+        parameter = torch.load(parameter_file)
 
-        hourglass.load_state_dict(pretrained_model['state'])
-        step[0] = pretrained_model['step']
+        hourglass.load_state_dict(parameter['state'])
+        optimizer.load_state_dict(parameter['optimizer'])
+        step[0] = parameter['step']
 
-    else:
-        pretrained_model = None
-
-    hourglass = hourglass.to(device)
-    optimizer = torch.optim.RMSprop(hourglass.parameters(), lr=2.5e-4)
-    if pretrained_model is not None:
-        optimizer.load_state_dict(pretrained_model['optimizer'])
-    criterion = nn.MSELoss()
-
-    return hourglass, optimizer, criterion, step, pretrained_epoch
+    return hourglass, optimizer, step, epoch_to_load

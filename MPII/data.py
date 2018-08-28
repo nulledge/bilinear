@@ -89,11 +89,14 @@ class Dataset(torch_data.Dataset):
         center = Vector2(objpos.x, objpos.y + 15 * annorect.scale)
         center.setflags(write=False)
 
+        head = 0.6 * math.sqrt((annorect.x2 - annorect.x1) ** 2 + (annorect.y2 - annorect.y1) ** 2)
+
         image_name = annolist[img_idx].image.name
         image_path = '{image_path}/{image_name}'.format(image_path=self.image_path, image_name=image_name)
         image = crop_image(image_path, center, scale, rotate)
 
         position = np.zeros(shape=(16, 2), dtype=np.float32)
+        position[:, :] = np.nan
         heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
 
         keypoints = annorect.annopoints.point
@@ -104,7 +107,10 @@ class Dataset(torch_data.Dataset):
 
         for keypoint in keypoints:
             joint = keypoint.id
+
             in_image = Vector2(keypoint.x, keypoint.y)
+            position[joint] = [in_image.x, in_image.y]
+
             in_heatmap = (in_image - center) * 64 / (200 * scale)
 
             if rotate != 0:
@@ -113,7 +119,6 @@ class Dataset(torch_data.Dataset):
                 in_heatmap = Vector2(sin * in_heatmap.y + cos * in_heatmap.x, cos * in_heatmap.y - sin * in_heatmap.x)
 
             in_heatmap = in_heatmap + Vector2(64 // 2, 64 // 2)
-            position[joint] = [in_heatmap.x, in_heatmap.y]
 
             if min(in_heatmap) < 0 or max(in_heatmap) >= 64:
                 continue
@@ -123,7 +128,7 @@ class Dataset(torch_data.Dataset):
         if self.task == 'train' and self.augment:
             image = self.color_jitter(image)
 
-        return self.transform(image), heatmap, position
+        return self.transform(image), heatmap, position, np.asarray([center.x, center.y]), scale, np.asarray([head])
 
     def __len__(self):
         return len(self.subset)
