@@ -17,14 +17,14 @@ class BilinearUnit(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.encode = heavy_linear(in_features=2 * 17, out_features=1024)
+        self.encode = heavy_linear(in_features=2 * (17 - 1), out_features=1024)
         self.bilinear = nn.ModuleList([
             nn.Sequential(
                 heavy_linear(in_features=1024, out_features=1024),
                 heavy_linear(in_features=1024, out_features=1024),
             ) for _ in range(2)
         ])
-        self.decode = nn.Linear(in_features=1024, out_features=3 * 17, bias=True)
+        self.decode = nn.Linear(in_features=1024, out_features=3 * (17 - 1), bias=True)
 
     def forward(self, in_tensor):
         out_tensor = in_tensor
@@ -37,6 +37,20 @@ class BilinearUnit(nn.Module):
         out_tensor = self.decode(out_tensor)
 
         return out_tensor
+
+    def reset_statistics(self):
+        for key, value in self.state_dict().items():
+            if 'running_mean' in key:
+
+                layer = self
+                modules = key.split('.')[:-1]
+                for module in modules:
+                    if module.isdigit():
+                        layer = layer[int(module)]
+                    else:
+                        layer = getattr(layer, module)
+                layer.reset_running_stats()
+                layer.momentum = None
 
 
 def load(parameter_dir, device, learning_rate=1.0e-3):
@@ -51,7 +65,7 @@ def load(parameter_dir, device, learning_rate=1.0e-3):
             name, extension = file.split('.')
             epoch = int(name)
 
-            if (epoch > epoch_to_load and not epoch_to_load == -1) or epoch == -1:
+            if epoch > epoch_to_load:
                 epoch_to_load = epoch
 
     if epoch_to_load != 0:

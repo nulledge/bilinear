@@ -3,7 +3,6 @@ import math
 import numpy as np
 import torch.utils.data as torch_data
 import os
-from torchvision import transforms
 from vectormath import Vector2
 
 from .util import decode_image_name
@@ -49,6 +48,7 @@ class Dataset(torch_data.Dataset):
 
         for dim, anno in zip([2, 3], [Annotation.Part, Annotation.S]):
             data[anno] = (data[anno] - self.mean[self.task][dim]) / self.stddev[self.task][dim]
+            data[anno] = data[anno].astype(dtype=np.float32)
 
         return data[Annotation.Part], data[Annotation.S], \
                data[Annotation.Center], data[Annotation.Scale], \
@@ -105,12 +105,19 @@ class Dataset(torch_data.Dataset):
         else:
             anno = Annotation.Part
 
-        root = self.data[task][anno][:][0]  # Frame-Dim
-        root_centered = self.data[task][anno] - root  # Frame-Joint-Dim
-        self.data[task][anno] = root_centered
+        self.data[task][anno] = np.asarray(self.data[task][anno])
 
-        data = np.reshape(np.asarray(self.data[task][anno]), newshape=(-1, dim * 17))  # Frame-Dim*Joint
-        mean = np.reshape(np.mean(data, axis=0), newshape=(17, dim))  # Joint-Dim
-        stddev = np.reshape(np.std(data, axis=0), newshape=(17, dim))  # Joint-Dim
+        root = self.data[task][anno][:, 0, :]  # Frame-Dim
+        root = np.expand_dims(root, 1)  # Frame-Joint-Dim
+        root_centered = self.data[task][anno] - root  # Frame-Joint-Dim
+        root_removed = root_centered[:, 1:, :]  # Frame-Joint(pelvis removed)-Dim
+        self.data[task][anno] = root_removed
+
+        assert root.shape[1:] == (1, dim)
+        assert self.data[task][anno].shape[1:] == (17 - 1, dim)
+
+        data = np.reshape(self.data[task][anno], newshape=(-1, dim * (17 - 1)))  # Frame-Dim*Joint
+        mean = np.reshape(np.mean(data, axis=0), newshape=(17 - 1, dim))  # Joint-Dim
+        stddev = np.reshape(np.std(data, axis=0), newshape=(17 - 1, dim))  # Joint-Dim
 
         return mean, stddev
