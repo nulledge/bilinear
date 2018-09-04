@@ -28,7 +28,10 @@ bilinear.train()
 for epoch in range(train_epoch+ 1, train_epoch + 150 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
         with torch.set_grad_enabled(True):
-            for in_image_space, in_camera_space, center, scale, _, _ in data:
+            for subset, _, _ in data:
+
+                in_image_space = subset[H36M.Annotation.Part]
+                in_camera_space = subset[H36M.Annotation.S]
 
                 # Learning rate decay
                 if config.bilinear.lr_decay.activate and config.bilinear.lr_decay.condition(step):

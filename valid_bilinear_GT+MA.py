@@ -24,16 +24,18 @@ bilinear.eval()
 total_dist = torch.zeros((17 - 1))
 total = 0
 
-dim = 3
-task = H36M.Task.Train
-mean = torch.Tensor(data.dataset.mean[task][dim]).to(config.bilinear.device).view(-1, dim * (17 - 1))
-stddev = torch.Tensor(data.dataset.stddev[task][dim]).to(config.bilinear.device).view(-1, dim * (17 - 1))
-
 with tqdm(total=len(data), desc='%d epoch' % train_epoch) as progress:
     with torch.set_grad_enabled(False):
-        for in_image_space, in_camera_space, center, scale, _, _ in data:
+        for subset, _, _ in data:
+            in_image_space = subset[H36M.Annotation.Part]
+            in_camera_space = subset[H36M.Annotation.S]
+            mean = subset[H36M.Annotation.Mean_Of + H36M.Annotation.S]
+            stddev = subset[H36M.Annotation.Stddev_Of + H36M.Annotation.S]
+
             in_image_space = in_image_space.to(config.bilinear.device).view(-1, 2 * (17 - 1))
             in_camera_space = in_camera_space.to(config.bilinear.device).view(-1, 3 * (17 - 1))
+            mean = mean.to(config.bilinear.device).view(-1, 3 * (17 - 1))
+            stddev = stddev.to(config.bilinear.device).view(-1, 3 * (17 - 1))
 
             n_batch = in_image_space.shape[0]
             total = total + n_batch

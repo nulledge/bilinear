@@ -7,7 +7,7 @@ from torchvision import transforms
 from vectormath import Vector2
 
 from .util import decode_image_name
-from .annotation import annotations, Annotation
+from .annotation import Annotation
 from .task import tasks, Task
 from .util import draw_heatmap, crop_image
 
@@ -43,11 +43,18 @@ class Dataset(torch_data.Dataset):
     def __getitem__(self, index):
         data = dict()
         required = [
-                       Annotation.Image,
-                       Annotation.Root_Of + Annotation.Part,
-                       Annotation.Mean_Of + Annotation.Part,
-                       Annotation.Stddev_Of + Annotation.Part,
-                   ] + annotations[self.task]
+            Annotation.Image,
+            Annotation.S,
+            Annotation.Center,
+            Annotation.Part,
+            Annotation.Scale,
+            Annotation.Root_Of + Annotation.S,
+            Annotation.Root_Of + Annotation.Part,
+            Annotation.Mean_Of + Annotation.S,
+            Annotation.Mean_Of + Annotation.Part,
+            Annotation.Stddev_Of + Annotation.S,
+            Annotation.Stddev_Of + Annotation.Part,
+        ]
 
         for annotation in required:
             if Annotation.Mean_Of in annotation or Annotation.Stddev_Of in annotation:
@@ -71,12 +78,7 @@ class Dataset(torch_data.Dataset):
             data[anno] = data[anno] - self.data[self.task][Annotation.Mean_Of + anno]
             data[anno] = data[anno] / self.data[self.task][Annotation.Stddev_Of + anno]
 
-        return data[Annotation.Part], data[Annotation.S], \
-               data[Annotation.Center], data[Annotation.Scale], \
-               data[Annotation.Root_Of + Annotation.Part], \
-               data[Annotation.Mean_Of + Annotation.Part], \
-               data[Annotation.Stddev_Of + Annotation.Part], \
-               image, heatmap
+        return data, image, heatmap
 
     def __add__(self, item):
         pass
