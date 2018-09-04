@@ -25,7 +25,7 @@ writer = SummaryWriter(log_dir=config.bilinear.log_dir)
 
 bilinear.train()
 
-for epoch in range(train_epoch+ 1, train_epoch + 150 + 1):
+for epoch in range(train_epoch+ 1, train_epoch + 200 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
         with torch.set_grad_enabled(True):
             for subset, _, _ in data:
