@@ -8,24 +8,29 @@ from vectormath import Vector2
 
 from .util import decode_image_name
 from .annotation import Annotation
+from .protocol import Protocol
 from .task import tasks, Task
 from .util import draw_heatmap, crop_image
 
 
 class Dataset(torch_data.Dataset):
 
-    def __init__(self, data_dir, task, position_only=True):
+    def __init__(self, data_dir, task, position_only=True, protocol=Protocol.GT):
 
         assert task in tasks
+        assert protocol in [Protocol.GT, Protocol.SH, Protocol.SH_FT]
         assert os.path.exists(data_dir) and 'Human3.6M' in data_dir
 
         self.data_dir = data_dir
         self.task = task
         self.position_only = position_only
+        self.protocol = protocol
 
         self.data = dict()
         for task in tasks:
-            self.data[task] = pickle.load(open("{data_dir}/{task}.bin".format(data_dir=self.data_dir, task=task), 'rb'))
+
+            data_path = "{data_dir}/{task}_{protocol}.bin".format(data_dir=data_dir, task=task, protocol=protocol)
+            self.data[task] = pickle.load(open(data_path, 'rb'))
 
             for anno in [Annotation.Part, Annotation.S]:
                 self.data[task][anno], \
