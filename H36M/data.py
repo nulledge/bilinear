@@ -27,16 +27,35 @@ class Dataset(torch_data.Dataset):
         self.protocol = protocol
 
         self.data = dict()
-        for task in tasks:
+        for task in [Task.Train, Task.Valid]:
 
             data_path = "{data_dir}/{task}_{protocol}.bin".format(data_dir=data_dir, task=task, protocol=protocol)
             self.data[task] = pickle.load(open(data_path, 'rb'))
 
-            for anno in [Annotation.Part, Annotation.S]:
-                self.data[task][anno], \
-                self.data[task][Annotation.Root_Of + anno], \
-                self.data[task][Annotation.Mean_Of + anno], \
-                self.data[task][Annotation.Stddev_Of + anno] = self.normalize(task=task, anno=anno)
+            for dim, anno in zip([2, 3], [Annotation.Part, Annotation.S]):
+
+                # self.data['part'] and self.data['S'] are list object
+                self.data[task][anno] = np.asarray(self.data[task][anno], dtype=np.float32)
+
+                if anno == Annotation.Part:
+                    # We only use 16 joint, except for nose
+                    self.data[task][anno] = np.delete(self.data[task][anno], 9, axis=1)  # Shape=(n_data, 16, 2)
+
+                # Root-center normalization for 3D pose
+                elif anno == Annotation.S:
+                    root = self.data[task][anno][:, 0, :]  # Frame-Dim
+                    root = np.expand_dims(root, 1)  # Frame-Joint-Dim
+                    root_centered = self.data[task][anno] - root
+                    self.data[task][anno] = root_centered  # Shape=(n_data, 17, 2)
+
+                    # Remove the pelvis because mean and stddev after root-centering are always 0.0
+                    root_removed = self.data[task][anno][:, 1:, :]
+                    self.data[task][anno] = root_removed  # Shape=(n_data, 16, 2)
+
+                # Calculate mean and stddev
+                self.data[task][anno] = np.reshape(self.data[task][anno], newshape=(-1, dim * 16))  # Frame-Dim*Joint
+                self.data[task][Annotation.Mean_Of + anno] = np.mean(self.data[task][anno], axis=0)  # Dim*Joint
+                self.data[task][Annotation.Stddev_Of + anno] = np.std(self.data[task][anno], axis=0)  # Dim*Joint
 
         self.transform = transforms.Compose([
             transforms.ToTensor(),
@@ -53,21 +72,19 @@ class Dataset(torch_data.Dataset):
             Annotation.Center,
             Annotation.Part,
             Annotation.Scale,
-            Annotation.Root_Of + Annotation.S,
-            Annotation.Root_Of + Annotation.Part,
             Annotation.Mean_Of + Annotation.S,
-            Annotation.Mean_Of + Annotation.Part,
             Annotation.Stddev_Of + Annotation.S,
-            Annotation.Stddev_Of + Annotation.Part,
         ]
 
         for annotation in required:
             if Annotation.Mean_Of in annotation or Annotation.Stddev_Of in annotation:
                 select = slice(None)
+                task = Task.Train
             else:
                 select = index
+                task = self.task
 
-            data[annotation] = self.data[self.task][annotation][select]
+            data[annotation] = self.data[task][annotation][select]
 
             if annotation == Annotation.Center:  # Correct annotation.
                 data[annotation] = np.asarray([data[annotation].x, data[annotation].y], dtype=np.float32)
@@ -79,11 +96,13 @@ class Dataset(torch_data.Dataset):
         else:
             image, heatmap = self.preprocess(data)
 
-        for dim, anno in zip([2, 3], [Annotation.Part, Annotation.S]):
-            data[anno] = data[anno] - self.data[self.task][Annotation.Mean_Of + anno]
-            data[anno] = data[anno] / self.data[self.task][Annotation.Stddev_Of + anno]
+        _, action, _, _ = decode_image_name(data[Annotation.Image])
 
-        return data, image, heatmap
+        for dim, anno in zip([2, 3], [Annotation.Part, Annotation.S]):
+            data[anno] = data[anno] - self.data[Task.Train][Annotation.Mean_Of + anno]
+            data[anno] = data[anno] / self.data[Task.Train][Annotation.Stddev_Of + anno]
+
+        return data, image, heatmap, action
 
     def __add__(self, item):
         pass
@@ -108,7 +127,7 @@ class Dataset(torch_data.Dataset):
         image = crop_image(image_path, center, scale, angle)
 
         if self.task == Task.Train:
-            heatmap = np.zeros(shape=(17, 64, 64), dtype=np.float32)
+            heatmap = np.zeros(shape=(16, 64, 64), dtype=np.float32)
 
             for idx, keypoint in enumerate(part):
                 # Un-normalize
@@ -131,28 +150,3 @@ class Dataset(torch_data.Dataset):
             heatmap = -1
 
         return self.transform(image), heatmap
-
-    def normalize(self, task, anno):
-        assert task in tasks
-        assert anno in [Annotation.Part, Annotation.S]
-
-        if anno == Annotation.S:
-            dim = 3
-        else:
-            dim = 2
-
-        data = np.asarray(self.data[task][anno], dtype=np.float32)
-
-        root = data[:, 0, :]  # Frame-Dim
-        root = np.expand_dims(root, 1)  # Frame-Joint-Dim
-        root_centered = data - root  # Frame-Joint-Dim
-        root_removed = root_centered[:, 1:, :]  # Frame-Joint(pelvis removed)-Dim
-
-        assert root.shape[1:] == (1, dim)
-        assert root_removed.shape[1:] == (17 - 1, dim)
-
-        data = np.reshape(root_removed, newshape=(-1, dim * (17 - 1)))  # Frame-Dim*Joint
-        mean = np.reshape(np.mean(data, axis=0), newshape=(17 - 1, dim))  # Joint-Dim
-        stddev = np.reshape(np.std(data, axis=0), newshape=(17 - 1, dim))  # Joint-Dim
-
-        return root_removed, root, mean, stddev

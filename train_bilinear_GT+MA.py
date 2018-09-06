@@ -12,6 +12,7 @@ data = DataLoader(
     H36M.Dataset(
         data_dir=config.bilinear.data_dir,
         task=H36M.Task.Train,
+        protocol=H36M.Protocol.GT,
     ),
     batch_size=config.bilinear.batch_size,
     shuffle=True,
@@ -21,14 +22,14 @@ data = DataLoader(
 
 bilinear, optimizer, step, train_epoch = model.bilinear.load(config.bilinear.parameter_dir, config.bilinear.device)
 criterion = nn.MSELoss()
-writer = SummaryWriter(log_dir=config.bilinear.log_dir)
+writer = SummaryWriter(log_dir=config.bilinear.log_dir + '/GT+MA')
 
 bilinear.train()
 
 for epoch in range(train_epoch+ 1, train_epoch + 200 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
         with torch.set_grad_enabled(True):
-            for subset, _, _ in data:
+            for subset, _, _, _ in data:
 
                 in_image_space = subset[H36M.Annotation.Part]
                 in_camera_space = subset[H36M.Annotation.S]
@@ -39,8 +40,8 @@ for epoch in range(train_epoch+ 1, train_epoch + 200 + 1):
                     for param_group in optimizer.param_groups:
                         param_group['lr'] = lr
 
-                in_image_space = in_image_space.to(config.bilinear.device).view(-1, 2 * (17 - 1))
-                in_camera_space = in_camera_space.to(config.bilinear.device).view(-1, 3 * (17 - 1))
+                in_image_space = in_image_space.to(config.bilinear.device)
+                in_camera_space = in_camera_space.to(config.bilinear.device)
 
                 optimizer.zero_grad()
                 prediction = bilinear(in_image_space)

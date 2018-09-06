@@ -17,14 +17,16 @@ class BilinearUnit(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.encode = heavy_linear(in_features=2 * (17 - 1), out_features=1024)
+        num_joint = 17 - 1
+
+        self.encode = heavy_linear(in_features=2 * num_joint, out_features=1024)
         self.bilinear = nn.ModuleList([
             nn.Sequential(
                 heavy_linear(in_features=1024, out_features=1024),
                 heavy_linear(in_features=1024, out_features=1024),
             ) for _ in range(2)
         ])
-        self.decode = nn.Linear(in_features=1024, out_features=3 * (17 - 1), bias=True)
+        self.decode = nn.Linear(in_features=1024, out_features=3 * num_joint, bias=True)
 
     def forward(self, in_tensor):
         out_tensor = in_tensor
