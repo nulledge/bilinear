@@ -54,6 +54,10 @@ with tqdm(total=len(data), desc='%d epoch' % train_epoch) as progress:
             # Compute distance between ground-truth and prediction
             dist = torch.sum(torch.sqrt(torch.sum((prediction - ground_truth) ** 2, dim=2)), dim=1)
             for idx in range(n_batch):
+
+                # Never consider whether sub-action is 1 ({action}_1) or 2 (just {action}
+                action[idx] = action[idx].split('_')[0]
+
                 if action[idx] not in total_dist.keys():
                     total_dist[action[idx]] = np.double(0)
                     total[action[idx]] = 0
