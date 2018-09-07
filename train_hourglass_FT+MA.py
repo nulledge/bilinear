@@ -5,7 +5,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
-import MPII
+import H36M
 import model.hourglass
 from util import config
 from util.visualize import colorize, overlap
@@ -13,14 +13,15 @@ from util.visualize import colorize, overlap
 writer = SummaryWriter()
 
 data = DataLoader(
-    MPII.Dataset(
-        root=config.hourglass.data_dir,
-        task='train',
+    H36M.Dataset(
+        data_dir=config.bilinear.data_dir,
+        task=H36M.Task.Train,
+        protocol=H36M.Protocol.GT,
     ),
     batch_size=config.hourglass.batch_size,
-    num_workers=config.hourglass.num_workers,
     shuffle=True,
     pin_memory=True,
+    num_workers=config.bilinear.num_workers,
 )
 
 hourglass, optimizer, step, train_epoch = model.hourglass.load(config.hourglass.parameter_dir, config.hourglass.device)
@@ -31,22 +32,26 @@ assert train_epoch is not -1
 
 hourglass.train()
 
-writer = SummaryWriter(log_dir=config.hourglass.log_dir + '/center_not_moved')
+writer = SummaryWriter(log_dir=config.hourglass.log_dir + '/FT+center_moved')
 resize = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize(size=[64, 64]),
     transforms.ToTensor(),
 ])
 
+from_H36M_to_MPII = torch.Tensor([6, 5, 4, 1, 2, 3, 0, 7, 8, 9, 15, 14, 13, 10, 11, 12]).long()
+
 for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
 
         with torch.set_grad_enabled(True):
 
-            for images, heatmaps, _, _, _, _ in data:
+            for subset, images, heatmaps, action in data:
 
                 images = images.to(config.hourglass.device)
                 heatmaps = heatmaps.to(config.hourglass.device)
+
+                heatmaps = torch.index_select(heatmaps, index=from_H36M_to_MPII, dim=1)
 
                 optimizer.zero_grad()
                 outputs = hourglass(images)

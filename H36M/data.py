@@ -113,9 +113,8 @@ class Dataset(torch_data.Dataset):
         center = Vector2(data[Annotation.Center])
         scale = data[Annotation.Scale]
         # Concat [[0, 0]] for pelvis
-        part = np.concatenate([np.zeros(shape=(1, 2)), data[Annotation.Part]])
+        part = data[Annotation.Part].reshape((16, 2))
         # Root is shape of (1, 2)
-        root = data[Annotation.Root_Of + Annotation.Part].squeeze()
         angle = 0
 
         # Extract subject from an image name.
@@ -131,7 +130,7 @@ class Dataset(torch_data.Dataset):
 
             for idx, keypoint in enumerate(part):
                 # Un-normalize
-                in_image = Vector2(keypoint) + Vector2(root)
+                in_image = Vector2(keypoint)
                 in_heatmap = (in_image - center) * 64 / (200 * scale)
 
                 if angle != 0:
