@@ -59,7 +59,6 @@ for epoch in range(train_epoch + 1, 200 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
         with torch.set_grad_enabled(True):
 
-            assert data.dataset.task == H36M.Task.Train
             for subset, _, _, _ in data:
 
                 in_image_space = subset[H36M.Annotation.Part]
@@ -86,7 +85,7 @@ for epoch in range(train_epoch + 1, 200 + 1):
                 optimizer.step()
 
                 # Too frequent update reduces the performance.
-                writer.add_scalar('loss', loss, step)
+                writer.add_scalar('BI/loss', loss, step)
 
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)

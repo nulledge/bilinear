@@ -165,20 +165,21 @@ class StackedHourglass(nn.Module):
                 layer.momentum = None
 
 
-def load(parameter_dir, device):
+def load(device, parameter_dir=None):
     hourglass = StackedHourglass(stacks=8, joints=16).to(device)
     optimizer = torch.optim.RMSprop(hourglass.parameters(), lr=2.5e-4)
-    step = np.zeros([1], dtype=np.uint32)
+    step = 1
 
     epoch_to_load = 0
-    for _, _, files in os.walk(parameter_dir):
-        for parameter_file in files:
-            # The name of parameter file is {epoch}.save
-            name, extension = parameter_file.split('.')
-            epoch = int(name)
+    if parameter_dir is not None:
+        for _, _, files in os.walk(parameter_dir):
+            for parameter_file in files:
+                # The name of parameter file is {epoch}.save
+                name, extension = parameter_file.split('.')
+                epoch = int(name)
 
-            if (epoch > epoch_to_load and not epoch_to_load == -1) or epoch == -1:
-                epoch_to_load = epoch
+                if epoch > epoch_to_load:
+                    epoch_to_load = epoch
 
     if epoch_to_load != 0:
         parameter_file = '{parameter_dir}/{epoch}.save'.format(parameter_dir=parameter_dir, epoch=epoch_to_load)
@@ -186,6 +187,6 @@ def load(parameter_dir, device):
 
         hourglass.load_state_dict(parameter['state'])
         optimizer.load_state_dict(parameter['optimizer'])
-        step[0] = parameter['step']
+        step = parameter['step']
 
     return hourglass, optimizer, step, epoch_to_load

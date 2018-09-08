@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import os
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
@@ -9,13 +10,33 @@ import MPII
 import model.hourglass
 from util import config
 from util.visualize import colorize, overlap
+from util.log import get_logger
 
-writer = SummaryWriter()
+time_stamp_to_load = None
+
+logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
+
+if time_stamp_to_load is None:
+    logger.info('                                                           ')
+    logger.info('                                                           ')
+    logger.info('===========================================================')
+    logger.info('Time stamp     : ' + time_stamp + '                        ')
+    logger.info('===========================================================')
+    logger.info('Architecture   : ' + 'Stacked hourglass' + '               ')
+    logger.info('   -task       : ' + MPII.Task.Train + '                   ')
+    logger.info('   -device     : ' + str(config.hourglass.device) + '      ')
+    logger.info('===========================================================')
+    logger.info('Data           : ' + 'MPII' + '                            '),
+    logger.info('   -directory  : ' + config.hourglass.data_dir + '         ')
+    logger.info('   -mini batch : ' + str(config.hourglass.batch_size) + '  ')
+    logger.info('   -shuffle    : ' + 'True' + '                            ')
+    logger.info('   -worker     : ' + str(config.hourglass.num_workers) + ' ')
+    logger.info('===========================================================')
 
 data = DataLoader(
     MPII.Dataset(
         root=config.hourglass.data_dir,
-        task='train',
+        task=MPII.Task.Train,
     ),
     batch_size=config.hourglass.batch_size,
     num_workers=config.hourglass.num_workers,
@@ -23,20 +44,23 @@ data = DataLoader(
     pin_memory=True,
 )
 
-hourglass, optimizer, step, train_epoch = model.hourglass.load(config.hourglass.parameter_dir, config.hourglass.device)
+hourglass, optimizer, step, train_epoch = model.hourglass.load(
+    device=config.hourglass.device,
+    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir) if time_stamp_to_load is not None else None,
+)
 criterion = nn.MSELoss()
-
-# train_epoch equals -1 means that training is over
-assert train_epoch is not -1
+writer = SummaryWriter(log_dir='{log_dir}/visualize'.format(
+    log_dir=log_dir,
+))
 
 hourglass.train()
 
-writer = SummaryWriter(log_dir=config.hourglass.log_dir + '/center_not_moved')
 resize = transforms.Compose([
     transforms.ToPILImage(),
-    transforms.Resize(size=[64, 64]),
+    transforms.Resize(size=[256, 256]),
     transforms.ToTensor(),
 ])
+upscale = lambda heatmaps: torch.stack([resize(heatmap) for heatmap in heatmaps.cpu()]).to(config.hourglass.device)
 
 for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
@@ -58,21 +82,22 @@ for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
 
                 optimizer.step()
 
-                if config.hourglass.visualize:
-                    writer.add_scalar('loss', loss, step)
-                    if step % 10 == 0:
-                        images = torch.stack([resize(image) for image in images.cpu()]).to(config.hourglass.device)
+                writer.add_scalar('SH/loss', loss, step)
+                if step % 100 == 0:
+                    ground_truth = overlap(images=images, heatmaps=upscale(colorize(heatmaps)))
+                    prediction = overlap(images=images, heatmaps=upscale(colorize(outputs[-1])))
 
-                        ground_truth = overlap(images=images, heatmaps=colorize(heatmaps))
-                        prediction = overlap(images=images, heatmaps=colorize(outputs[-1]))
-
-                        writer.add_image('ground truth', ground_truth.data, step)
-                        writer.add_image('prediction', prediction.data, step)
+                    writer.add_image('{time_stamp}/ground-truth'.format(time_stamp=time_stamp), ground_truth.data, step)
+                    writer.add_image('{time_stamp}/prediction'.format(time_stamp=time_stamp), prediction.data, step)
 
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
                 step = step + 1
 
+    save_dir = '{log_dir}/parameter'.format(log_dir=log_dir)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    save_to = '{save_dir}/{epoch}.save'.format(save_dir=save_dir, epoch=epoch, )
     torch.save(
         {
             'epoch': epoch,
@@ -80,7 +105,8 @@ for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
             'state': hourglass.state_dict(),
             'optimizer': optimizer.state_dict(),
         },
-        '{parameter}/{epoch}.save'.format(parameter=config.hourglass.parameter_dir, epoch=epoch)
+        save_to,
     )
+    logger.info('Epoch {epoch} saved (loss: {loss})'.format(epoch=epoch, loss=float(loss.item())))
 
-writer.close()
+logger.info('===========================================================')
