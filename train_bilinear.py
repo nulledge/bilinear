@@ -10,15 +10,13 @@ import model
 from util import config
 from util.log import get_logger
 
-time_stamp_to_load = None
+logger, log_dir, comment = get_logger(comment=config.bilinear.comment)
 
-logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
-
-if time_stamp_to_load is None:
+if config.bilinear.comment is None or not os.path.exists('save/{comment}/parameter'.format(comment=comment)):
     logger.info('                                                           ')
     logger.info('                                                           ')
     logger.info('===========================================================')
-    logger.info('Time stamp     : ' + time_stamp + '                        ')
+    logger.info('Comment        : ' + comment + '                           ')
     logger.info('===========================================================')
     logger.info('Architecture   : ' + 'Bilinear' + '                        ')
     logger.info('   -protocol   : ' + config.bilinear.protocol + '          ')
@@ -46,7 +44,7 @@ data = DataLoader(
 
 bilinear, optimizer, step, train_epoch = model.bilinear.load(
     device=config.bilinear.device,
-    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir) if time_stamp_to_load is not None else None,
+    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir) if config.bilinear.comment is not None else None,
 )
 criterion = nn.MSELoss()
 writer = SummaryWriter(log_dir='{log_dir}/visualize'.format(
@@ -55,7 +53,7 @@ writer = SummaryWriter(log_dir='{log_dir}/visualize'.format(
 
 bilinear.train()
 
-for epoch in range(train_epoch + 1, 200 + 1):
+for epoch in range(train_epoch + 1, train_epoch + 10 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
         with torch.set_grad_enabled(True):
 
@@ -106,5 +104,4 @@ for epoch in range(train_epoch + 1, 200 + 1):
         )
         logger.info('Epoch {epoch} saved (loss: {loss})'.format(epoch=epoch, loss=float(loss.item())))
 
-logger.info('===========================================================')
 writer.close()

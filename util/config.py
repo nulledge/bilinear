@@ -3,6 +3,7 @@ from H36M.protocol import Protocol
 from dotmap import DotMap
 
 hourglass = DotMap({
+    'comment': 'Hourglass',
     'batch_size': 8,
     'num_workers': 8,
     'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
@@ -10,6 +11,7 @@ hourglass = DotMap({
 })
 
 bilinear = DotMap({
+    'comment': 'Bilinear GT',
     'batch_size': 64,
     'num_workers': 8,
     'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu'),

@@ -11,10 +11,8 @@ from util import config
 from util.visualize import colorize, overlap
 from util.log import get_logger
 
-time_stamp_to_load = None
-assert time_stamp_to_load is not None
-
-logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
+assert config.hourglass.comment is not None
+logger, log_dir, comment = get_logger(comment=config.hourglass.comment)
 
 hourglass, optimizer, step, train_epoch = model.hourglass.load(
     device=config.hourglass.device,
@@ -47,6 +45,8 @@ with tqdm(total=len(train_loader), desc='%d epoch' % train_epoch) as progress:
 
             progress.update(1)
 
+del train_loader
+
 hourglass = hourglass.eval()
 
 valid_data = DataLoader(
@@ -63,7 +63,6 @@ valid_data = DataLoader(
 
 total = torch.zeros((14,)).int()
 hit = torch.zeros((14,)).int()
-
 
 writer = SummaryWriter(log_dir='{log_dir}/visualize'.format(
     log_dir=log_dir,
@@ -98,10 +97,10 @@ with tqdm(total=len(valid_data), desc='%d epoch' % train_epoch) as progress:
 
             if step % 10 == 0:
                 ground_truth = overlap(images=images, heatmaps=upscale(colorize(heatmaps)))
-                prediction = overlap(images=images, heatmaps=upscale(colorize(outputs[-1])))
+                prediction = overlap(images=images, heatmaps=upscale(colorize(outputs)))
 
-                writer.add_image('{time_stamp}/val/ground-truth'.format(time_stamp=time_stamp), ground_truth.data, step)
-                writer.add_image('{time_stamp}/val/prediction'.format(time_stamp=time_stamp), prediction.data, step)
+                writer.add_image('{comment}/val/ground-truth'.format(comment=config.hourglass.comment), ground_truth.data, step)
+                writer.add_image('{comment}/val/prediction'.format(comment=config.hourglass.comment), prediction.data, step)
 
             dists = poses - keypoints.to(config.hourglass.device).float()
             dists = torch.sqrt(torch.sum(dists * dists, dim=-1))
@@ -123,8 +122,13 @@ with tqdm(total=len(valid_data), desc='%d epoch' % train_epoch) as progress:
 
 hit = hit.float()
 total = total.float()
-for idx, joint in enumerate(MPII.keypoints):
-    logger.info('{joint}: {PCKh}'.format(joint=joint, PCKh=(hit / total * 100)))
+PCKh = hit / total * 100
+reordered = MPII.keypoints[0:6] + MPII.keypoints[10:16] + MPII.keypoints[8:10]
 
 logger.info('===========================================================')
+for idx, joint in enumerate(reordered):
+    logger.info('{joint}: {PCKh}'.format(joint=joint, PCKh=PCKh[idx]))
+logger.info('avg: {PCKh}'.format(PCKh=torch.sum(hit) / torch.sum(total) * 100))
+logger.info('===========================================================')
+
 writer.close()

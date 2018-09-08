@@ -12,21 +12,19 @@ from util import config
 from util.visualize import colorize, overlap
 from util.log import get_logger
 
-time_stamp_to_load = None
+logger, log_dir, comment = get_logger(comment=config.hourglass.comment)
 
-logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
-
-if time_stamp_to_load is None:
+if config.hourglass.comment is None:
     logger.info('                                                           ')
     logger.info('                                                           ')
     logger.info('===========================================================')
-    logger.info('Time stamp     : ' + time_stamp + '                        ')
+    logger.info('Comment        : ' + comment + '                           ')
     logger.info('===========================================================')
     logger.info('Architecture   : ' + 'Stacked hourglass' + '               ')
     logger.info('   -task       : ' + MPII.Task.Train + '                   ')
     logger.info('   -device     : ' + str(config.hourglass.device) + '      ')
     logger.info('===========================================================')
-    logger.info('Data           : ' + 'MPII' + '                            '),
+    logger.info('Data           : ' + 'MPII' + '                            ')
     logger.info('   -directory  : ' + config.hourglass.data_dir + '         ')
     logger.info('   -mini batch : ' + str(config.hourglass.batch_size) + '  ')
     logger.info('   -shuffle    : ' + 'True' + '                            ')
@@ -46,7 +44,7 @@ data = DataLoader(
 
 hourglass, optimizer, step, train_epoch = model.hourglass.load(
     device=config.hourglass.device,
-    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir) if time_stamp_to_load is not None else None,
+    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir) if config.hourglass.comment is not None else None,
 )
 criterion = nn.MSELoss()
 writer = SummaryWriter(log_dir='{log_dir}/visualize'.format(
@@ -62,7 +60,7 @@ resize = transforms.Compose([
 ])
 upscale = lambda heatmaps: torch.stack([resize(heatmap) for heatmap in heatmaps.cpu()]).to(config.hourglass.device)
 
-for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
+for epoch in range(train_epoch + 1, train_epoch + 10 + 1):
     with tqdm(total=len(data), desc='%d epoch' % epoch) as progress:
 
         with torch.set_grad_enabled(True):
@@ -87,8 +85,8 @@ for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
                     ground_truth = overlap(images=images, heatmaps=upscale(colorize(heatmaps)))
                     prediction = overlap(images=images, heatmaps=upscale(colorize(outputs[-1])))
 
-                    writer.add_image('{time_stamp}/ground-truth'.format(time_stamp=time_stamp), ground_truth.data, step)
-                    writer.add_image('{time_stamp}/prediction'.format(time_stamp=time_stamp), prediction.data, step)
+                    writer.add_image('{comment}/ground-truth'.format(comment=config.hourglass.comment), ground_truth.data, step)
+                    writer.add_image('{comment}/prediction'.format(comment=config.hourglass.comment), prediction.data, step)
 
                 progress.set_postfix(loss=float(loss.item()))
                 progress.update(1)
@@ -109,5 +107,4 @@ for epoch in range(train_epoch + 1, train_epoch + 100 + 1):
     )
     logger.info('Epoch {epoch} saved (loss: {loss})'.format(epoch=epoch, loss=float(loss.item())))
 
-logger.info('===========================================================')
 writer.close()

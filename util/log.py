@@ -3,11 +3,11 @@ import os
 from datetime import datetime
 
 
-def get_logger(time_stamp=None):
-    if time_stamp is None:
-        time_stamp = datetime.now().strftime('%b%d_%H-%M-%S')
+def get_logger(comment=None):
+    if comment is None:
+        comment = datetime.now().strftime('%b%d_%H-%M-%S')
 
-    log_dir = 'save/{time_stamp}'.format(time_stamp=time_stamp)
+    log_dir = 'save/{comment}'.format(comment=comment)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     log_file = os.path.join(log_dir, 'debug.log')
@@ -25,4 +25,4 @@ def get_logger(time_stamp=None):
     logger.addHandler(file)
     logger.addHandler(stream)
 
-    return logger, log_dir, time_stamp
+    return logger, log_dir, comment

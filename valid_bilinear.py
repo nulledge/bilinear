@@ -8,10 +8,8 @@ import model.bilinear
 from util import config
 from util.log import get_logger
 
-time_stamp_to_load = None
-assert time_stamp_to_load is not None
-
-logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
+assert config.bilinear.comment is not None
+logger, log_dir, comment = get_logger(comment=config.bilinear.comment)
 
 data = DataLoader(
     H36M.Dataset(

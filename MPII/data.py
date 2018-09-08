@@ -86,7 +86,7 @@ class Dataset(torch_data.Dataset):
             rotate = rand(30) if random() <= 0.4 else 0.0
 
         objpos = annorect.objpos
-        center = Vector2(objpos.x, objpos.y)  # + 15 * annorect.scale)
+        center = Vector2(objpos.x, objpos.y + 15 * annorect.scale)
         center.setflags(write=False)
 
         head = 0.6 * math.sqrt((annorect.x2 - annorect.x1) ** 2 + (annorect.y2 - annorect.y1) ** 2)
