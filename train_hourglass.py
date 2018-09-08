@@ -14,7 +14,7 @@ from util.log import get_logger
 
 logger, log_dir, comment = get_logger(comment=config.hourglass.comment)
 
-if config.hourglass.comment is None:
+if config.hourglass.comment is None or not os.path.exists('save/{comment}/parameter'.format(comment=comment)):
     logger.info('                                                           ')
     logger.info('                                                           ')
     logger.info('===========================================================')
