@@ -9,56 +9,50 @@ import MPII
 import model.hourglass
 from util import config
 from util.visualize import colorize, overlap
+from util.log import get_logger
 
-hourglass, optimizer, step, train_epoch = model.hourglass.load(config.hourglass.parameter_dir, config.hourglass.device)
+time_stamp_to_load = None
+assert time_stamp_to_load is not None
+
+logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
+
+hourglass, optimizer, step, train_epoch = model.hourglass.load(
+    device=config.hourglass.device,
+    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir),
+)
 criterion = nn.MSELoss()
 
-# train_epoch equals -1 means that training is over
-if train_epoch != -1:
+# Reset statistics of batch normalization
+hourglass.reset_statistics()
+hourglass.train()
 
-    # Reset statistics of batch normalization
-    hourglass.reset_statistics()
-    hourglass.train()
+train_loader = DataLoader(
+    MPII.Dataset(
+        root=config.hourglass.data_dir,
+        task=MPII.Task.Train,
+        augment=False,
+    ),
+    batch_size=config.hourglass.batch_size,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=config.hourglass.num_workers,
+)
 
-    train_loader = DataLoader(
-        MPII.Dataset(
-            root=config.hourglass.data_dir,
-            task='train',
-            augment=False,
-        ),
-        batch_size=config.hourglass.batch_size,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=config.hourglass.num_workers,
-    )
+# Compute statistics of batch normalization from the train subset
+with tqdm(total=len(train_loader), desc='%d epoch' % train_epoch) as progress:
+    with torch.set_grad_enabled(False):
+        for images, _, _, _, _, _ in train_loader:
+            images = images.to(config.hourglass.device)
+            outputs = hourglass(images)
 
-    # Compute statistics of batch normalization from the train subset
-    with tqdm(total=len(train_loader), desc='%d epoch' % train_epoch) as progress:
-        with torch.set_grad_enabled(False):
-            for images, _, _, _, _, _ in train_loader:
-                images = images.to(config.hourglass.device)
-                outputs = hourglass(images)
-
-                progress.update(1)
-
-    # epoch equals -1 means that training is over
-    epoch = -1
-    torch.save(
-        {
-            'epoch': epoch,
-            'step': step,
-            'state': hourglass.state_dict(),
-            'optimizer': optimizer.state_dict(),
-        },
-        '{parameter_dir}/{epoch}.save'.format(parameter_dir=config.hourglass.parameter_dir, epoch=epoch)
-    )
+            progress.update(1)
 
 hourglass = hourglass.eval()
 
 valid_data = DataLoader(
     MPII.Dataset(
         root=config.hourglass.data_dir,
-        task='valid',
+        task=MPII.Task.Valid,
         augment=False,
     ),
     batch_size=config.hourglass.batch_size,
@@ -70,12 +64,16 @@ valid_data = DataLoader(
 total = torch.zeros((14,)).int()
 hit = torch.zeros((14,)).int()
 
-writer = SummaryWriter(log_dir=config.hourglass.log_dir)
+
+writer = SummaryWriter(log_dir='{log_dir}/visualize'.format(
+    log_dir=log_dir,
+))
 resize = transforms.Compose([
     transforms.ToPILImage(),
-    transforms.Resize(size=[64, 64]),
+    transforms.Resize(size=[256, 256]),
     transforms.ToTensor(),
 ])
+upscale = lambda heatmaps: torch.stack([resize(heatmap) for heatmap in heatmaps.cpu()]).to(config.hourglass.device)
 
 with tqdm(total=len(valid_data), desc='%d epoch' % train_epoch) as progress:
     with torch.set_grad_enabled(False):
@@ -99,13 +97,11 @@ with tqdm(total=len(valid_data), desc='%d epoch' % train_epoch) as progress:
             poses = centers.view(n_batch, 1, 2) + poses / 64 * scales.view(n_batch, 1, 1) * 200
 
             if step % 10 == 0:
-                images = torch.stack([resize(image) for image in images.cpu()]).to(config.hourglass.device)
+                ground_truth = overlap(images=images, heatmaps=upscale(colorize(heatmaps)))
+                prediction = overlap(images=images, heatmaps=upscale(colorize(outputs[-1])))
 
-                ground_truth = overlap(images=images, heatmaps=colorize(heatmaps))
-                prediction = overlap(images=images, heatmaps=colorize(outputs))
-
-                writer.add_image('ground truth', ground_truth.data, step)
-                writer.add_image('prediction', prediction.data, step)
+                writer.add_image('{time_stamp}/val/ground-truth'.format(time_stamp=time_stamp), ground_truth.data, step)
+                writer.add_image('{time_stamp}/val/prediction'.format(time_stamp=time_stamp), prediction.data, step)
 
             dists = poses - keypoints.to(config.hourglass.device).float()
             dists = torch.sqrt(torch.sum(dists * dists, dim=-1))
@@ -125,120 +121,10 @@ with tqdm(total=len(valid_data), desc='%d epoch' % train_epoch) as progress:
             progress.update(1)
             step = step + 1
 
-print(hit.float() / total.float() * 100)
-print(hit)
-print(total)
+hit = hit.float()
+total = total.float()
+for idx, joint in enumerate(MPII.keypoints):
+    logger.info('{joint}: {PCKh}'.format(joint=joint, PCKh=(hit / total * 100)))
 
+logger.info('===========================================================')
 writer.close()
-
-# import numpy as np
-# import torch
-# from torch.utils.data import DataLoader
-# from tqdm import tqdm
-#
-# import MPII
-# import Model.hourglass
-# from util import config
-#
-# assert config.task == 'valid'
-#
-# data = DataLoader(
-#     MPII.Dataset(
-#         root=config.root['MPII'],
-#         task=config.task,
-#     ),
-#     batch_size=config.batch_size,
-#     shuffle=True,
-#     pin_memory=True,
-#     num_workers=config.num_workers,
-# )
-#
-# device = torch.device(config.device)
-# hourglass, optimizer, criterion, step, pretrained_epoch = Model.hourglass.load_model(device,
-#                                                                                      config.pretrained['hourglass'])
-#
-#
-# for key, value in hourglass.state_dict().items():
-#     if 'running_mean' in key:
-#
-#         layer = hourglass
-#         modules = key.split('.')[:-1]
-#         for module in modules:
-#             if module.isdigit():
-#                 layer = layer[int(module)]
-#             else:
-#                 layer = getattr(layer, module)
-#         layer.reset_running_stats()
-#         layer.momentum = None
-#
-#
-# train_loader = DataLoader(
-#     MPII.Dataset(
-#         root=config.root['MPII'],
-#         task='train',
-#         augment=False,
-#     ),
-#     batch_size=config.batch_size,
-#     shuffle=True,
-#     pin_memory=True,
-#     num_workers=config.num_workers,
-# )
-#
-# hourglass.train()
-#
-# with tqdm(total=len(train_loader), desc='%d epoch' % pretrained_epoch) as progress:
-#
-#     with torch.set_grad_enabled(False):
-#
-#         for images, heatmaps, keypoints in train_loader:
-#             images_cpu = images
-#             images = images.to(device)
-#             heatmaps = heatmaps.to(device)
-#
-#             optimizer.zero_grad()
-#             outputs = hourglass(images)
-#
-#             progress.update(1)
-#
-# hourglass = hourglass.eval()
-#
-# total = torch.zeros(hourglass.joints).cuda()
-# hit = torch.zeros(hourglass.joints).cuda()
-#
-# with tqdm(total=len(data), desc='%d epoch' % pretrained_epoch) as progress:
-#     with torch.set_grad_enabled(False):
-#         for images, heatmaps, keypoints in data:
-#
-#             images_device = images.to(device)
-#
-#             outputs = hourglass(images_device)
-#             outputs = outputs[-1]  # Heatmaps from the last stack in batch-channel-height-width shape.
-#
-#             n_batch = outputs.shape[0]
-#
-#             # joint_map = [13, 12, 14, 11, 15, 10, 3, 2, 4, 1, 5, 0, 6, 7, 8, 9]
-#             joint_map = [x for x in range(16)]
-#
-#             for batch in range(n_batch):
-#                 for joint, heatmap in enumerate(outputs[batch]):
-#
-#                     # The empty heatmap means not-annotated.
-#                     if np.count_nonzero(heatmaps[batch][joint]) == 0:
-#                         continue
-#
-#                     total[joint] = total[joint] + 1
-#
-#                     pose = torch.argmax(heatmap.view(-1))
-#                     pose = torch.Tensor([int(pose) % 64, int(pose) // 64])
-#
-#                     dist = pose - keypoints[batch][joint_map[joint]]
-#                     dist = torch.sqrt(torch.sum(dist * dist))
-#
-#                     if torch.le(dist, 64 * 0.1):
-#                         hit[joint] = hit[joint] + 1
-#
-#             progress.update(1)
-#
-# print(hit)
-# print(total)
-# print(hit / total * 100)  # In percentage.

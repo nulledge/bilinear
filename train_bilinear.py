@@ -107,3 +107,4 @@ for epoch in range(train_epoch + 1, 200 + 1):
         logger.info('Epoch {epoch} saved (loss: {loss})'.format(epoch=epoch, loss=float(loss.item())))
 
 logger.info('===========================================================')
+writer.close()

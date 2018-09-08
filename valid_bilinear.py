@@ -78,7 +78,7 @@ logger.info('===========================================================')
 dist = 0.0
 cnt = 0
 for key, value in total_dist.items():
-    logger.info('{joint}: {MPJPE}'.format(joint=key, MPJPE=value / (total[key] * 16)))
+    logger.info('{action}: {MPJPE}'.format(action=key, MPJPE=value / (total[key] * 16)))
     dist = dist + value
     cnt = cnt + total[key] * 16
 
