@@ -55,23 +55,27 @@ class BilinearUnit(nn.Module):
                 layer.momentum = None
 
 
-def load(parameter_dir, device, learning_rate=1.0e-3):
+def load(device, parameter_dir=None, learning_rate=1.0e-3):
     bilinear = BilinearUnit().to(device)
     optimizer = torch.optim.Adam(bilinear.parameters(), lr=learning_rate)
     step = 1
 
     epoch_to_load = 0
-    for _, _, files in os.walk(parameter_dir):
-        for file in files:
-            # The name of parameter file is {epoch}.save
-            name, extension = file.split('.')
-            epoch = int(name)
+    if parameter_dir is not None:
+        for _, _, files in os.walk(parameter_dir):
+            for file in files:
+                # The name of parameter file is {epoch}.save
+                name, extension = file.split('.')
+                epoch = int(name)
 
-            if epoch > epoch_to_load:
-                epoch_to_load = epoch
+                if epoch > epoch_to_load:
+                    epoch_to_load = epoch
 
     if epoch_to_load != 0:
-        parameter_file = '{parameter_dir}/{epoch}.save'.format(parameter_dir=parameter_dir, epoch=epoch_to_load)
+        parameter_file = '{parameter_dir}/{epoch}.save'.format(
+            parameter_dir=parameter_dir,
+            epoch=epoch_to_load,
+        )
         parameter = torch.load(parameter_file)
 
         bilinear.load_state_dict(parameter['state'])
