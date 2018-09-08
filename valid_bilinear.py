@@ -8,7 +8,7 @@ import model.bilinear
 from util import config
 from util.log import get_logger
 
-time_stamp_to_load = 'Sep08_19-22-16'
+time_stamp_to_load = None
 assert time_stamp_to_load is not None
 
 logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
@@ -17,10 +17,10 @@ data = DataLoader(
     H36M.Dataset(
         data_dir=config.bilinear.data_dir,
         task=H36M.Task.Valid,
-        protocol=H36M.Protocol.GT,
+        protocol=config.bilinear.protocol,
     ),
     batch_size=config.bilinear.batch_size,
-    shuffle=False,
+    shuffle=True,
     pin_memory=True,
     num_workers=config.bilinear.num_workers,
 )
