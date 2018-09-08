@@ -6,6 +6,12 @@ from tqdm import tqdm
 import H36M
 import model.bilinear
 from util import config
+from util.log import get_logger
+
+time_stamp_to_load = 'Sep08_19-22-16'
+assert time_stamp_to_load is not None
+
+logger, log_dir, time_stamp = get_logger(time_stamp=time_stamp_to_load)
 
 data = DataLoader(
     H36M.Dataset(
@@ -19,9 +25,10 @@ data = DataLoader(
     num_workers=config.bilinear.num_workers,
 )
 
-bilinear, optimizer, step, train_epoch = model.bilinear.load(config.bilinear.parameter_dir, config.bilinear.device)
-
-assert train_epoch == 200
+bilinear, optimizer, step, train_epoch = model.bilinear.load(
+    device=config.bilinear.device,
+    parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir),
+)
 
 bilinear.eval()
 
@@ -66,11 +73,14 @@ with tqdm(total=len(data), desc='%d epoch' % train_epoch) as progress:
 
             progress.update(1)
 
+logger.info('===========================================================')
+
 dist = 0.0
 cnt = 0
 for key, value in total_dist.items():
-    print(key, value / (total[key] * 16))
+    logger.info('{joint}: {MPJPE}'.format(joint=key, MPJPE=value / (total[key] * 16)))
     dist = dist + value
     cnt = cnt + total[key] * 16
 
-print('avg', dist / cnt)
+logger.info('avg: {MPJPE}'.format(MPJPE=dist/cnt))
+logger.info('===========================================================')
