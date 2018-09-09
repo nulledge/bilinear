@@ -8,6 +8,7 @@ from torchvision import transforms
 from vectormath import Vector2
 
 from .util import rand, crop_image, draw_heatmap
+from MPII.task import Task
 
 
 class Dataset(torch_data.Dataset):
@@ -30,7 +31,7 @@ class Dataset(torch_data.Dataset):
 
         self.transform = transforms.ToTensor()
 
-        if self.task == 'train' and self.augment:
+        if self.task == Task.Train and self.augment:
             self.color_jitter = transforms.ColorJitter(0.3, 0.3, 0.3, 0.3)
 
     def refresh_subset(self):
@@ -81,7 +82,7 @@ class Dataset(torch_data.Dataset):
         # Rotation and scaling augmentation factors.
         scale = 1.25 * annorect.scale
         rotate = 0.0
-        if self.task == 'train' and self.augment:
+        if self.task == Task.Train and self.augment:
             scale = scale * 2 ** rand(0.25)
             rotate = rand(30) if random() <= 0.4 else 0.0
 
@@ -104,6 +105,14 @@ class Dataset(torch_data.Dataset):
         # Unify the shape.
         if type(keypoints) is not np.ndarray:
             keypoints = [keypoints]
+
+        flip = random() <= 0.4
+        if self.augment and self.task == Task.Train and flip:
+            for idx in range(len(keypoints)):
+                keypoints[idx].x = 2 * center.x - keypoints[idx].x
+                keypoints[idx].id = [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10][keypoints[idx].id]
+            rotate = -rotate
+            image = transforms.functional.hflip(image)
 
         for keypoint in keypoints:
             joint = keypoint.id

@@ -85,6 +85,16 @@ with tqdm(total=len(valid_data), desc='%d epoch' % train_epoch) as progress:
             outputs = hourglass(images)
             outputs = outputs[-1]  # Heatmaps from the last stack in batch-channel-height-width shape.
 
+            flip_images = images.flip(3).to(config.hourglass.device)
+            flip_outputs = hourglass(flip_images)
+            flip_outputs = flip_outputs[-1]
+
+            swap = torch.Tensor([5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]).long().to(config.hourglass.device)
+            flip_outputs = torch.index_select(flip_outputs, 1, swap)
+            flip_outputs = flip_outputs.flip(3).to(config.hourglass.device)
+
+            outputs = (outputs + flip_outputs)/2
+
             n_batch = outputs.shape[0]
 
             poses = torch.argmax(outputs.view(n_batch, 16, -1), dim=-1)
