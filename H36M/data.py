@@ -3,6 +3,7 @@ import math
 import numpy as np
 import torch.utils.data as torch_data
 import os
+from random import random
 from torchvision import transforms
 from vectormath import Vector2
 
@@ -10,7 +11,7 @@ from .util import decode_image_name
 from .annotation import Annotation
 from .protocol import Protocol
 from .task import tasks, Task
-from .util import draw_heatmap, crop_image
+from .util import draw_heatmap, crop_image, rand
 
 
 class Dataset(torch_data.Dataset):
@@ -57,9 +58,15 @@ class Dataset(torch_data.Dataset):
                 self.data[task][Annotation.Mean_Of + anno] = np.mean(self.data[task][anno], axis=0)  # Dim*Joint
                 self.data[task][Annotation.Stddev_Of + anno] = np.std(self.data[task][anno], axis=0)  # Dim*Joint
 
-        self.transform = transforms.Compose([
-            transforms.ToTensor(),
-        ])
+        if self.task == Task.Train:
+            self.transform = transforms.Compose([
+                transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
+                transforms.ToTensor(),
+            ])
+        else:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
 
     def __len__(self):
         return len(self.data[self.task][Annotation.Image])
@@ -116,6 +123,10 @@ class Dataset(torch_data.Dataset):
         part = data[Annotation.Part].reshape((16, 2))
         # Root is shape of (1, 2)
         angle = 0
+
+        if self.task == Task.Train:
+            scale = scale * 2 ** rand(0.25)
+            angle = rand(30) if random() <= 0.4 else 0.0
 
         # Extract subject from an image name.
         subject, _, _, _ = decode_image_name(image_name)

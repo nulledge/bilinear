@@ -6,6 +6,10 @@ from PIL import Image
 from vectormath import Vector2
 
 
+def rand(x):
+    return max(-2 * x, min(2 * x, gauss(0, 1) * x))
+
+
 def decode_image_name(image_name):
     subject_action, camera_frame, _ = image_name.split('.')
     split = subject_action.split('_')
