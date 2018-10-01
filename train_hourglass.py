@@ -7,7 +7,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
 import MPII
-import model.hourglass
+import model.hourglass_torch7
 from util import config
 from util.visualize import colorize, overlap
 from util.log import get_logger
@@ -42,7 +42,7 @@ data = DataLoader(
     pin_memory=True,
 )
 
-hourglass, optimizer, step, train_epoch = model.hourglass.load(
+hourglass, optimizer, step, train_epoch = model.hourglass_torch7.load(
     device=config.hourglass.device,
     parameter_dir='{log_dir}/parameter'.format(log_dir=log_dir) if config.hourglass.comment is not None else None,
 )
