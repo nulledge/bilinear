@@ -7,3 +7,5 @@ class Annotation:
     Root_Of = 'root of '  # Root position
     Mean_Of = 'mean of '  # Mean of position
     Stddev_Of = 'stddev of '  # Stddev of position
+    Action = 'action'  # Action type
+    Head = 'head'  # Head length for PCKh

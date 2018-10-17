@@ -1,22 +1,25 @@
 import math
 import numpy as np
 import os
-import scipy, scipy.io
+import scipy
+import scipy.io
 import torch.utils.data as torch_data
 from random import random, shuffle
 from torchvision import transforms
 from vectormath import Vector2
 
-from .util import rand, crop_image, draw_heatmap
-from MPII.task import Task
+from data.util import rand, crop_image, draw_heatmap
+from ..task import *
 
 
-class Dataset(torch_data.Dataset):
+class Parser(torch_data.Dataset):
 
     def __init__(self, root, task, augment=True):
         self.root = root
         self.task = task
         self.augment = augment
+
+        assert task in [Task.Train, Task.Valid, ]
 
         self.image_path = '{root}/images'.format(root=root)
 
@@ -29,10 +32,10 @@ class Dataset(torch_data.Dataset):
             self.refresh_subset()
         self.subset = np.loadtxt(self.subset_path, dtype=np.int32)
 
-        self.transform = transforms.ToTensor()
-
+        self.transform = [transforms.ToTensor(), ]
         if self.task == Task.Train and self.augment:
-            self.color_jitter = transforms.ColorJitter(0.3, 0.3, 0.3, 0.3)
+            self.transform = [transforms.ColorJitter(0.3, 0.3, 0.3, 0.3), ] + self.transform
+        self.transform = transforms.Compose(self.transform)
 
     def refresh_subset(self):
         correct = list()
@@ -133,9 +136,6 @@ class Dataset(torch_data.Dataset):
                 continue
 
             heatmap[joint, :, :] = draw_heatmap(64, in_heatmap.y, in_heatmap.x)
-
-        if self.task == 'train' and self.augment:
-            image = self.color_jitter(image)
 
         return self.transform(image), heatmap, position, np.asarray([center.x, center.y]), scale, np.asarray([head])
 

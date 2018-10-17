@@ -1,6 +1,5 @@
 import math
 import numpy as np
-import skimage, skimage.transform
 from functools import lru_cache
 from PIL import Image
 from random import gauss
@@ -47,10 +46,10 @@ def crop_image(image_path, center, scale, rotate, resolution=256):
 
     crop_src = [max(0, ul.x), max(0, ul.y), min(width, br.x), min(height, br.y)]
     crop_dst = [max(0, -ul.x), max(0, -ul.y), min(width, br.x) - ul.x, min(height, br.y) - ul.y]
-    crop_image = image.crop(crop_src)
+    cropped = image.crop(crop_src)
 
     new_image = Image.new("RGB", (br.x - ul.x, br.y - ul.y))
-    new_image.paste(crop_image, box=crop_dst)
+    new_image.paste(cropped, box=crop_dst)
 
     if rotate != 0:
         new_image = new_image.rotate(rotate, resample=Image.BILINEAR)

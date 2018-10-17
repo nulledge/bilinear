@@ -1,26 +1,25 @@
-import pickle
 import math
 import numpy as np
+import pickle
 import torch.utils.data as torch_data
 import os
 from random import random
 from torchvision import transforms
 from vectormath import Vector2
 
-from .util import decode_image_name
-from .annotation import Annotation
 from .protocol import Protocol
-from .task import tasks, Task
-from .util import draw_heatmap, crop_image, rand
+from ..annotation import Annotation
+from ..task import Task
+from ..util import crop_image, draw_heatmap, rand
 
 
-class Dataset(torch_data.Dataset):
+class Parser(torch_data.Dataset):
 
     def __init__(self, data_dir, task, position_only=True, protocol=Protocol.GT):
 
-        assert task in tasks
-        assert protocol in [Protocol.GT, Protocol.SH, Protocol.SH_FT]
-        assert os.path.exists(data_dir) and 'Human3.6M' in data_dir
+        # assert task in [Task.Train, Task.Valid, ]
+        # assert protocol in [Protocol.GT, Protocol.SH, Protocol.SH_FT]
+        # assert os.path.exists(data_dir) and 'Human3.6M' in data_dir
 
         self.data_dir = data_dir
         self.task = task
@@ -58,15 +57,8 @@ class Dataset(torch_data.Dataset):
                 self.data[task][Annotation.Mean_Of + anno] = np.mean(self.data[task][anno], axis=0)  # Dim*Joint
                 self.data[task][Annotation.Stddev_Of + anno] = np.std(self.data[task][anno], axis=0)  # Dim*Joint
 
-        if self.task == Task.Train:
-            self.transform = transforms.Compose([
-                transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
-                transforms.ToTensor(),
-            ])
-        else:
-            self.transform = transforms.Compose([
-                transforms.ToTensor(),
-            ])
+        self.transform = transforms.ToTensor() if self.task == Task.Valid else \
+            transforms.Compose([transforms.ColorJitter(0.3, 0.3, 0.3, 0.3), transforms.ToTensor()])
 
     def __len__(self):
         return len(self.data[self.task][Annotation.Image])
@@ -103,13 +95,14 @@ class Dataset(torch_data.Dataset):
         else:
             image, heatmap = self.preprocess(data)
 
-        _, action, _, _ = decode_image_name(data[Annotation.Image])
-
         for dim, anno in zip([2, 3], [Annotation.Part, Annotation.S]):
             data[anno] = data[anno] - self.data[Task.Train][Annotation.Mean_Of + anno]
             data[anno] = data[anno] / self.data[Task.Train][Annotation.Stddev_Of + anno]
 
-        return data, image, heatmap, action
+        subject, action, camera, _ = Parser._decode_image_name(data[Annotation.Image])
+        data[Annotation.Action] = '{subject} {action} {camera}'.format(subject=subject, action=action, camera=camera)
+
+        return image, heatmap, data
 
     def __add__(self, item):
         pass
@@ -129,7 +122,7 @@ class Dataset(torch_data.Dataset):
             angle = rand(30) if random() <= 0.4 else 0.0
 
         # Extract subject from an image name.
-        subject, _, _, _ = decode_image_name(image_name)
+        subject, _, _, _ = Parser._decode_image_name(image_name)
 
         # Crop RGB image.
         image_path = '{data_dir}/{subject}/{image_name}'.format(data_dir=self.data_dir, subject=subject,
@@ -160,3 +153,15 @@ class Dataset(torch_data.Dataset):
             heatmap = -1
 
         return self.transform(image), heatmap
+
+    @staticmethod
+    def _decode_image_name(image_name):
+        subject_action, camera_frame, _ = image_name.split('.')
+        split = subject_action.split('_')
+        subject = split[0]
+        action = split[1]
+        if len(split) >= 3:
+            action = action + '_' + split[2]
+        camera, frame = camera_frame.split('_')
+
+        return subject, action, camera, frame
